@@ -1,4 +1,15 @@
 #!/bin/bash
+# <swiftbar.title>AWS SSO Status</swiftbar.title>
+# <swiftbar.version>3.3.0</swiftbar.version>
+# <swiftbar.author>guihash</swiftbar.author>
+# <swiftbar.author.github>guihash</swiftbar.author.github>
+# <swiftbar.desc>Cloud icon in the menu bar; STS check in background; OS notification when the session expires.</swiftbar.desc>
+# <swiftbar.dependencies>python3,aws</swiftbar.dependencies>
+# <swiftbar.hideAbout>true</swiftbar.hideAbout>
+# <swiftbar.hideRunInTerminal>true</swiftbar.hideRunInTerminal>
+# <swiftbar.hideLastUpdated>true</swiftbar.hideLastUpdated>
+# <swiftbar.hideSwiftBar>true</swiftbar.hideSwiftBar>
+# <swiftbar.hideDisablePlugin>true</swiftbar.hideDisablePlugin>
 # <swiftbar.refreshOnOpen>true</swiftbar.refreshOnOpen>
 # SwiftBar entry point.
 # Helpers and Python live in .aws-sso-status/ (any folder starting with "."
