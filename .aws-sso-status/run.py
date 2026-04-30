@@ -330,32 +330,36 @@ def notify(title: str, message: str):
         pass
 
 
-def notify_with_action(title: str, message: str, action_label: str, on_click_cmd: list):
-    """
-    Show a notification with an action button. If the user clicks it,
-    spawn `on_click_cmd` (detached). Blocks for up to ~timeout seconds while
-    waiting for user input — call this from a background process.
-    """
+def _alerter_wait_for_action(title: str, message: str, action_label: str) -> bool:
+    """Show the action notification and block until clicked / timed out / closed."""
     alerter = resolve_alerter()
     if not alerter:
-        notify(title, message)
-        return
+        return False
     cmd = _alerter_base_cmd(alerter, title, message, 60) + ["--actions", action_label]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=70, check=False)
     except (subprocess.TimeoutExpired, OSError):
-        return
-    if (r.stdout or "").strip() == action_label:
-        try:
-            subprocess.Popen(
-                on_click_cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                close_fds=True,
-                start_new_session=True,
-            )
-        except OSError:
-            pass
+        return False
+    return (r.stdout or "").strip() == action_label
+
+
+def notify_with_action(title: str, message: str, action_label: str, on_click_cmd: list):
+    """
+    Fire a notification with an action button. Returns immediately.
+    If the user clicks the action, `on_click_cmd` runs detached.
+    """
+    args = [sys.executable, "-B", __file__, "--do-action",
+            title, message, action_label] + [str(c) for c in on_click_cmd]
+    try:
+        subprocess.Popen(
+            args,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+            start_new_session=True,
+        )
+    except OSError:
+        notify(title, message)
 
 
 # ---------------------------------------------------------------------------
@@ -415,6 +419,22 @@ def main():
         run_background_update()
         sys.exit(0)
 
+    if len(sys.argv) > 1 and sys.argv[1] == "--do-action":
+        title, message, action_label = sys.argv[2], sys.argv[3], sys.argv[4]
+        on_click_cmd = sys.argv[5:]
+        if _alerter_wait_for_action(title, message, action_label):
+            try:
+                subprocess.Popen(
+                    on_click_cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    close_fds=True,
+                    start_new_session=True,
+                )
+            except OSError:
+                pass
+        sys.exit(0)
+
     if len(sys.argv) > 1 and sys.argv[1] == "select-profile":
         if len(sys.argv) > 2:
             new_profile = sys.argv[2]
@@ -426,7 +446,14 @@ def main():
             if is_authenticated:
                 notify("AWS SSO", f"Switched to {new_profile} — credentials OK")
             else:
-                notify("AWS SSO", f"Switched to {new_profile} — not authenticated, click Sign in")
+                sso_session = get_sso_session_name(new_profile) or ""
+                sso_sh = str(HELPERS / "sso.sh")
+                notify_with_action(
+                    "AWS SSO",
+                    f"Switched to {new_profile} — not authenticated",
+                    "Sign in",
+                    [sso_sh, "login", sso_session, new_profile],
+                )
         sys.exit(0)
 
     profile = get_selected_profile()

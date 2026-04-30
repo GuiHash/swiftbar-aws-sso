@@ -34,7 +34,7 @@ case "$ACTION" in
 
     logmsg "Checking STS for profile: $PROFILE"
     if "$AWS_BIN" sts get-caller-identity --profile "$PROFILE" >/dev/null 2>&1; then
-      notify "AWS SSO" "Already authenticated — credentials OK for $PROFILE"
+      notify "AWS SSO" "Already authenticated"
       exit 0
     fi
 
@@ -56,7 +56,7 @@ case "$ACTION" in
 
     if [[ "$LOGIN_OK" == true ]]; then
       rm -f "$TMP"
-      notify "AWS SSO" "Signed in — credentials OK for $PROFILE"
+      notify "AWS SSO" "Signed in"
     else
       ec=$?
       { echo "$(ts) sso login failed (exit $ec)"; cat "$TMP"; echo; } >>"$LOG_FILE"
