@@ -481,16 +481,6 @@ def main():
     print("---")
     print(f"Profile: {profile}")
     print(f"Status: {'active' if is_authenticated else 'not authenticated'}")
-    print("---")
-
-    if is_authenticated:
-        print(f"Sign out | bash={sso_sh} param0=logout param1={profile} terminal=false refresh=true")
-    else:
-        print(f"Sign in | bash={sso_sh} param0=login param1={sso_session} param2={profile} terminal=false refresh=true")
-
-    start_url = get_start_url(profile)
-    if start_url:
-        print(f"Open AWS Console | href={start_url}")
 
     profiles = get_all_sso_profiles()
     if len(profiles) > 1:
@@ -500,6 +490,17 @@ def main():
             mark = "✓ " if p == profile else ""
             print(f"--{mark}{p} | bash={ENTRY} param0=select-profile param1={p} terminal=false refresh=true")
 
+
+    print("---")
+  
+    start_url = get_start_url(profile)
+    if start_url:
+        print(f"Open AWS Console | href={start_url}")
+
+    if is_authenticated:
+        print(f"Sign out | bash={sso_sh} param0=logout param1={profile} terminal=false refresh=true")
+    else:
+        print(f"Sign in | bash={sso_sh} param0=login param1={sso_session} param2={profile} terminal=false refresh=true")
 
 if __name__ == "__main__":
     main()
