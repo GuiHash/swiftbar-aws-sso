@@ -50,7 +50,7 @@ After installation, open SwiftBar (`open -a SwiftBar`) and trigger **Refresh all
 
 Every minute, SwiftBar runs `aws-sso-status.1m.sh`, which delegates to `.aws-sso-status/run.py`. The script:
 
-1. Resolves the active profile (env var `SWIFTBAR_AWS_PROFILE` → `~/.aws/swiftbar-profile` → first SSO profile in `~/.aws/config`).
+1. Resolves the active profile by matching the contents of `[default]` against each `[profile <name>]` block in `~/.aws/config` (env var `SWIFTBAR_AWS_PROFILE` or first SSO profile as fallback).
 2. Calls `aws sts get-caller-identity --profile <profile>` (8s timeout).
 3. Renders the menu bar icon (`cloud.fill` green or `xmark.icloud.fill` red).
 4. Compares the new state with the previous tick (`~/.aws/swiftbar-sso-state`) and fires a notification on `ok → expired`.
@@ -65,10 +65,7 @@ Clicking **Sign in** runs `.aws-sso-status/login.sh`, which:
 
 ### Profile switching
 
-Selecting a profile from the **Switch default profile** submenu does two things:
-
-1. Saves the choice to `~/.aws/swiftbar-profile` (used by the plugin on every tick).
-2. **Rewrites the `[default]` block in `~/.aws/config`** with the contents of `[profile <selected>]`, so any `aws ...` command without `--profile` uses the selected profile too.
+Selecting a profile from the **Switch default profile** submenu **rewrites the `[default]` block in `~/.aws/config`** with the contents of `[profile <selected>]`, so any `aws ...` command without `--profile` uses the selected profile too. On the next tick, the plugin recovers the active name by matching `[default]` against the other profile blocks.
 
 The first time the file is rewritten, `~/.aws/config.swiftbar.bak` is created as a safety backup. After the next tick, an `STS check` confirms the new profile and a notification is fired.
 
@@ -76,7 +73,6 @@ The first time the file is rewritten, `~/.aws/config.swiftbar.bak` is created as
 
 | Path | Purpose |
 | --- | --- |
-| `~/.aws/swiftbar-profile` | Persists the active profile across reboots |
 | `~/.aws/swiftbar-sso-state` | `ok` / `expired` from the last tick (used to detect transitions) |
 | `~/.aws/swiftbar-sso-just-switched` | Marker dropped during a profile switch; consumed by the next tick |
 | `~/.aws/swiftbar-sso-login.log` | Append-only log from `login.sh` / `logout.sh` |
@@ -86,7 +82,7 @@ The first time the file is rewritten, `~/.aws/config.swiftbar.bak` is created as
 
 | Env var | Effect |
 | --- | --- |
-| `SWIFTBAR_AWS_PROFILE` | Override the default profile if `~/.aws/swiftbar-profile` doesn't exist yet |
+| `SWIFTBAR_AWS_PROFILE` | Override the default profile when `[default]` isn't set in `~/.aws/config` |
 | `AWS` | Absolute path to the `aws` binary (used when it's not on `PATH`) |
 
 ## Troubleshooting

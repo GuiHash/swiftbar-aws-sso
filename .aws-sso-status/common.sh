@@ -44,12 +44,7 @@ resolve_aws() {
 }
 
 read_profile() {
-  local profile=""
-  if [[ -f "${HOME}/.aws/swiftbar-profile" ]]; then
-    IFS= read -r profile <"${HOME}/.aws/swiftbar-profile" || true
-    profile="${profile//[$'\r\n']/}"
-    profile="${profile#"${profile%%[![:space:]]*}"}"
-    profile="${profile%"${profile##*[![:space:]]}"}"
-  fi
-  echo "$profile"
+  local script="${_HELPERS_DIR}/run.py"
+  [[ -f "$script" ]] || { echo ""; return; }
+  python3 -B "$script" --get-profile 2>/dev/null || true
 }

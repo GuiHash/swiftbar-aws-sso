@@ -23,7 +23,6 @@ from pathlib import Path
 
 FALLBACK_DEFAULT_PROFILE = "default"
 
-PROFILE_PREF_FILE = Path.home() / ".aws" / "swiftbar-profile"
 STATE_FILE        = Path.home() / ".aws" / "swiftbar-sso-state"
 LAST_CHECK_FILE   = Path.home() / ".aws" / "swiftbar-sso-last-check"
 AWS_CONFIG_PATH   = Path.home() / ".aws" / "config"
@@ -137,19 +136,29 @@ def get_default_profile() -> str:
     return FALLBACK_DEFAULT_PROFILE
 
 
+def _profile_matching_default(config) -> str | None:
+    """Find the [profile X] whose key/value pairs match [default]."""
+    if "default" not in config:
+        return None
+    default_items = dict(config["default"])
+    if not default_items:
+        return None
+    for section in config.sections():
+        if not section.startswith("profile "):
+            continue
+        if dict(config[section]) == default_items:
+            return section[len("profile "):]
+    return None
+
+
 def get_selected_profile() -> str:
-    if PROFILE_PREF_FILE.exists():
-        try:
-            text = PROFILE_PREF_FILE.read_text().strip()
-            if text:
-                return text
-        except OSError:
-            pass
+    config = _read_aws_config()
+    if config and "default" in config and dict(config["default"]):
+        match = _profile_matching_default(config)
+        if match:
+            return match
+        return "default"
     return get_default_profile() or FALLBACK_DEFAULT_PROFILE
-
-
-def set_selected_profile(name: str):
-    PROFILE_PREF_FILE.write_text(name)
 
 
 def apply_default_profile(profile_name: str) -> bool:
@@ -435,10 +444,13 @@ def main():
                 pass
         sys.exit(0)
 
+    if len(sys.argv) > 1 and sys.argv[1] == "--get-profile":
+        print(get_selected_profile())
+        sys.exit(0)
+
     if len(sys.argv) > 1 and sys.argv[1] == "select-profile":
         if len(sys.argv) > 2:
             new_profile = sys.argv[2]
-            set_selected_profile(new_profile)
             apply_default_profile(new_profile)
             _mark_check_done()
             is_authenticated = sts_works(new_profile)
