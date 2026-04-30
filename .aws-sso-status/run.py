@@ -44,7 +44,7 @@ STS_TIMEOUT_S = 8.0
 
 def _helpers_dir() -> Path:
     here = Path(__file__).resolve().parent
-    if (here / "login.sh").is_file():
+    if (here / "sso.sh").is_file():
         return here
     return here.parent
 
@@ -275,25 +275,44 @@ def write_state(state: str):
         pass
 
 
+def resolve_alerter():
+    env_val = os.environ.get("ALERTER", "").strip()
+    if env_val and os.path.isfile(env_val) and os.access(env_val, os.X_OK):
+        return env_val
+    which = shutil.which("alerter")
+    if which:
+        return which
+    for p in ("/opt/homebrew/bin/alerter", "/usr/local/bin/alerter"):
+        if os.path.isfile(p) and os.access(p, os.X_OK):
+            return p
+    return None
+
+
 def notify(title: str, message: str):
-    """Best-effort notification (Notification Center → alert fallback)."""
+    """Best-effort notification (alerter → osascript fallback)."""
+    alerter = resolve_alerter()
+    if alerter:
+        try:
+            icon = str(Path(__file__).resolve().parent / "icon.png")
+            cmd = [alerter, "--title", title, "--message", message,
+                   "--sound", "Glass", "--group", "aws-sso-status", "--timeout", "30"]
+            if os.path.isfile(icon):
+                cmd += ["--app-icon", icon]
+            subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                close_fds=True,
+                start_new_session=True,
+            )
+            return
+        except OSError:
+            pass
     safe_msg = message.replace('"', '\\"')
     safe_title = title.replace('"', '\\"')
     script = f'display notification "{safe_msg}" with title "{safe_title}" sound name "Glass"'
     try:
-        r = subprocess.run(
-            ["osascript", "-e", script],
-            capture_output=True,
-            timeout=5,
-            check=False,
-        )
-        if r.returncode == 0:
-            return
-    except (subprocess.TimeoutExpired, OSError):
-        pass
-    fallback = f'display alert "{safe_title}" message "{safe_msg}"'
-    try:
-        subprocess.run(["osascript", "-e", fallback], capture_output=True, timeout=5, check=False)
+        subprocess.run(["osascript", "-e", script], capture_output=True, timeout=5, check=False)
     except (subprocess.TimeoutExpired, OSError):
         pass
 
@@ -329,8 +348,7 @@ def main():
 
     profile = get_selected_profile()
     sso_session = get_sso_session_name(profile) or ""
-    login_sh = HELPERS / "login.sh"
-    logout_sh = HELPERS / "logout.sh"
+    sso_sh = HELPERS / "sso.sh"
 
     is_authenticated = sts_works(profile)
     handle_transition(profile, is_authenticated)
@@ -358,9 +376,9 @@ def main():
     print("---")
 
     if is_authenticated:
-        print(f"Sign out | bash={logout_sh} param0={profile} terminal=false refresh=true")
+        print(f"Sign out | bash={sso_sh} param0=logout param1={profile} terminal=false refresh=true")
     else:
-        print(f"Sign in | bash={login_sh} param0={sso_session} param1={profile} terminal=false refresh=true")
+        print(f"Sign in | bash={sso_sh} param0=login param1={sso_session} param2={profile} terminal=false refresh=true")
 
     start_url = get_start_url(profile)
     if start_url:
