@@ -11,6 +11,7 @@
 #   ./install.sh --copy                # non-interactive copy install
 #   ./install.sh --plugins-dir <path>  # override SwiftBar plugins dir
 #   ./install.sh --yes                 # accept defaults (symlink + auto-detected dir)
+#   ./install.sh --force               # overwrite existing symlink/file without backup
 
 set -euo pipefail
 
@@ -22,6 +23,7 @@ HELPERS_DIRNAME=".aws-sso-status"
 MODE=""
 PLUGIN_DIR=""
 ASSUME_YES=0
+FORCE=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -29,6 +31,7 @@ while [[ $# -gt 0 ]]; do
     --copy)    MODE="copy";    shift ;;
     --plugins-dir) PLUGIN_DIR="${2:-}"; shift 2 ;;
     --yes|-y) ASSUME_YES=1; shift ;;
+    --force|-f) FORCE=1; shift ;;
     -h|--help)
       sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
@@ -150,6 +153,10 @@ HELPERS_DST="$PLUGIN_DIR/$HELPERS_DIRNAME"
 backup_existing() {
   local target="$1"
   [[ -e "$target" || -L "$target" ]] || return 0
+  if [[ "$FORCE" -eq 1 ]]; then
+    rm -f -- "$target"
+    return 0
+  fi
   local bk="${target}.bak.$(date +%s)"
   mv -- "$target" "$bk"
   warn "Existing $target moved to $bk"
