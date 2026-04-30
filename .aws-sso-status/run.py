@@ -1,17 +1,16 @@
 #!/usr/bin/env -S python3 -B
 # <swiftbar.refreshOnOpen>true</swiftbar.refreshOnOpen>
-# <swiftbar.version>3.2.0</swiftbar.version>
+# <swiftbar.version>3.3.0</swiftbar.version>
 # <swiftbar.title>AWS SSO Status</swiftbar.title>
 # <swiftbar.author>guihash</swiftbar.author>
-# <swiftbar.desc>Cloud icon in the menu bar; STS check every minute; OS notification when the session expires.</swiftbar.desc>
+# <swiftbar.desc>Cloud icon in the menu bar; STS check in background; OS notification when the session expires.</swiftbar.desc>
 # Do not chmod +x — SwiftBar lists every executable in the plugin folder as a menu plugin.
 """
 AWS SSO Session Status for SwiftBar.
 
-The script is invoked by aws-sso-status.1m.sh every minute. It calls
-`aws sts get-caller-identity` to detect whether the active SSO session is
-still valid, draws the menu bar item (cloud icon, green/red), and emits a
-macOS notification when the session expires or after a profile switch.
+Rendering is instant: the menu always shows the last cached state (STATE_FILE).
+The STS check runs in a background subprocess and refreshes SwiftBar only when
+the auth state changes, so the menu bar never blocks on a network call.
 """
 
 import configparser
@@ -19,23 +18,23 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
-# Used only when ~/.aws/config has zero SSO profiles. Override with the
-# SWIFTBAR_AWS_PROFILE env var for a per-machine default.
 FALLBACK_DEFAULT_PROFILE = "default"
 
 PROFILE_PREF_FILE = Path.home() / ".aws" / "swiftbar-profile"
-STATE_FILE = Path.home() / ".aws" / "swiftbar-sso-state"
-SWITCH_MARKER = Path.home() / ".aws" / "swiftbar-sso-just-switched"
-AWS_CONFIG_PATH = Path.home() / ".aws" / "config"
+STATE_FILE        = Path.home() / ".aws" / "swiftbar-sso-state"
+LAST_CHECK_FILE   = Path.home() / ".aws" / "swiftbar-sso-last-check"
+AWS_CONFIG_PATH   = Path.home() / ".aws" / "config"
 
-ICON_OK = "cloud.fill"
-ICON_KO = "xmark.icloud.fill"
+ICON_OK  = "cloud.fill"
+ICON_KO  = "xmark.icloud.fill"
 COLOR_OK = "#7ED321,#7ED321"
 COLOR_KO = "#FF3B30,#FF6B5E"
 
-STS_TIMEOUT_S = 8.0
+STS_TIMEOUT_S   = 8.0
+CHECK_INTERVAL_S = 55.0  # background check fires at most once per ~minute
 
 
 # ---------------------------------------------------------------------------
@@ -55,7 +54,7 @@ def _swiftbar_entry() -> Path:
 
 
 HELPERS = _helpers_dir()
-ENTRY = _swiftbar_entry()
+ENTRY   = _swiftbar_entry()
 
 
 # ---------------------------------------------------------------------------
@@ -154,15 +153,8 @@ def set_selected_profile(name: str):
 
 
 def apply_default_profile(profile_name: str) -> bool:
-    """
-    Replace the [default] block in ~/.aws/config with the contents of
-    [profile <profile_name>]. Preserves other profile blocks and comments.
-    Backs up the original once on first change to ~/.aws/config.swiftbar.bak.
-    No-op if profile_name == "default" or the source profile cannot be found.
-    """
     if profile_name == "default" or not AWS_CONFIG_PATH.exists():
         return False
-
     try:
         original = AWS_CONFIG_PATH.read_text(encoding="utf-8")
     except OSError:
@@ -239,7 +231,6 @@ def resolve_aws_cli():
 
 
 def sts_works(profile: str) -> bool:
-    """True if `aws sts get-caller-identity` succeeds for this profile."""
     aws = resolve_aws_cli()
     if not aws:
         return False
@@ -256,7 +247,7 @@ def sts_works(profile: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# State transitions and notifications
+# State
 # ---------------------------------------------------------------------------
 
 def read_state() -> str:
@@ -275,6 +266,24 @@ def write_state(state: str):
         pass
 
 
+def _seconds_since_last_check() -> float:
+    try:
+        return time.time() - float(LAST_CHECK_FILE.read_text())
+    except (OSError, ValueError):
+        return float("inf")
+
+
+def _mark_check_done():
+    try:
+        LAST_CHECK_FILE.write_text(str(time.time()))
+    except OSError:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------------------
+
 def resolve_alerter():
     env_val = os.environ.get("ALERTER", "").strip()
     if env_val and os.path.isfile(env_val) and os.access(env_val, os.X_OK):
@@ -288,18 +297,22 @@ def resolve_alerter():
     return None
 
 
+def _alerter_base_cmd(alerter: str, title: str, message: str, timeout: int) -> list:
+    icon = str(Path(__file__).resolve().parent / "icon.png")
+    cmd = [alerter, "--title", title, "--message", message,
+           "--sound", "Glass", "--group", "aws-sso-status", "--timeout", str(timeout)]
+    if os.path.isfile(icon):
+        cmd += ["--app-icon", icon]
+    return cmd
+
+
 def notify(title: str, message: str):
-    """Best-effort notification (alerter → osascript fallback)."""
+    """Best-effort fire-and-forget notification (alerter → osascript fallback)."""
     alerter = resolve_alerter()
     if alerter:
         try:
-            icon = str(Path(__file__).resolve().parent / "icon.png")
-            cmd = [alerter, "--title", title, "--message", message,
-                   "--sound", "Glass", "--group", "aws-sso-status", "--timeout", "30"]
-            if os.path.isfile(icon):
-                cmd += ["--app-icon", icon]
             subprocess.Popen(
-                cmd,
+                _alerter_base_cmd(alerter, title, message, 30),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 close_fds=True,
@@ -317,13 +330,80 @@ def notify(title: str, message: str):
         pass
 
 
-def handle_transition(profile: str, is_authenticated: bool):
-    """Notify only on transition ok → expired (not on first run, not on manual logout)."""
-    new_state = "ok" if is_authenticated else "expired"
+def notify_with_action(title: str, message: str, action_label: str, on_click_cmd: list):
+    """
+    Show a notification with an action button. If the user clicks it,
+    spawn `on_click_cmd` (detached). Blocks for up to ~timeout seconds while
+    waiting for user input — call this from a background process.
+    """
+    alerter = resolve_alerter()
+    if not alerter:
+        notify(title, message)
+        return
+    cmd = _alerter_base_cmd(alerter, title, message, 60) + ["--actions", action_label]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=70, check=False)
+    except (subprocess.TimeoutExpired, OSError):
+        return
+    if (r.stdout or "").strip() == action_label:
+        try:
+            subprocess.Popen(
+                on_click_cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                close_fds=True,
+                start_new_session=True,
+            )
+        except OSError:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Background STS update
+# ---------------------------------------------------------------------------
+
+def _swiftbar_refresh():
+    try:
+        subprocess.run(
+            ["open", f"swiftbar://refreshPlugin?name={ENTRY.name}"],
+            capture_output=True, timeout=3, check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+
+
+def run_background_update():
+    """Called as a subprocess: check STS, update state, notify + refresh if changed."""
+    profile = get_selected_profile()
+    _mark_check_done()
+    is_authenticated = sts_works(profile)
     old_state = read_state()
-    if old_state == "ok" and new_state == "expired":
-        notify("AWS SSO", f"Session expired for {profile}")
+    new_state = "ok" if is_authenticated else "expired"
     write_state(new_state)
+    if old_state != new_state:
+        _swiftbar_refresh()
+    if old_state == "ok" and new_state == "expired":
+        sso_session = get_sso_session_name(profile) or ""
+        sso_sh = str(HELPERS / "sso.sh")
+        notify_with_action(
+            "AWS SSO",
+            f"Session expired for {profile}",
+            "Renew",
+            [sso_sh, "login", sso_session, profile],
+        )
+
+
+def _spawn_background_update():
+    try:
+        subprocess.Popen(
+            [sys.executable, "-B", __file__, "--update"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+            start_new_session=True,
+        )
+    except OSError:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -331,39 +411,40 @@ def handle_transition(profile: str, is_authenticated: bool):
 # ---------------------------------------------------------------------------
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--update":
+        run_background_update()
+        sys.exit(0)
+
     if len(sys.argv) > 1 and sys.argv[1] == "select-profile":
         if len(sys.argv) > 2:
             new_profile = sys.argv[2]
             set_selected_profile(new_profile)
             apply_default_profile(new_profile)
-            try:
-                STATE_FILE.unlink()
-            except (OSError, FileNotFoundError):
-                pass
-            try:
-                SWITCH_MARKER.write_text(new_profile)
-            except OSError:
-                pass
+            _mark_check_done()
+            is_authenticated = sts_works(new_profile)
+            write_state("ok" if is_authenticated else "expired")
+            if is_authenticated:
+                notify("AWS SSO", f"Switched to {new_profile} — credentials OK")
+            else:
+                notify("AWS SSO", f"Switched to {new_profile} — not authenticated, click Sign in")
         sys.exit(0)
 
     profile = get_selected_profile()
     sso_session = get_sso_session_name(profile) or ""
     sso_sh = HELPERS / "sso.sh"
 
-    is_authenticated = sts_works(profile)
-    handle_transition(profile, is_authenticated)
-
-    # Post-switch confirmation notification (only on the tick that follows a profile switch)
-    if SWITCH_MARKER.exists():
-        try:
-            switched_to = SWITCH_MARKER.read_text().strip() or profile
-            SWITCH_MARKER.unlink()
-        except OSError:
-            switched_to = profile
-        if is_authenticated:
-            notify("AWS SSO", f"Switched to {switched_to} — credentials OK")
-        else:
-            notify("AWS SSO", f"Switched to {switched_to} — not authenticated, click Sign in")
+    # Render immediately from cached state — no network call here.
+    cached_state = read_state()
+    if cached_state == "":
+        # First launch: no cached state yet, do a synchronous check once.
+        _mark_check_done()
+        is_authenticated = sts_works(profile)
+        write_state("ok" if is_authenticated else "expired")
+    else:
+        is_authenticated = cached_state == "ok"
+        # Kick off a background STS check if the last one is stale.
+        if _seconds_since_last_check() > CHECK_INTERVAL_S:
+            _spawn_background_update()
 
     if is_authenticated:
         print(f" | sfimage={ICON_OK} sfcolor={COLOR_OK}")
