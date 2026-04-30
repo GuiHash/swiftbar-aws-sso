@@ -1,0 +1,4 @@
+.aws-sso-status/
+.DS_Store
+__pycache__/
+*.pyc
