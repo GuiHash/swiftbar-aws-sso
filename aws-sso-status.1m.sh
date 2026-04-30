@@ -1,4 +1,5 @@
 #!/bin/bash
+# <swiftbar.refreshOnOpen>true</swiftbar.refreshOnOpen>
 # SwiftBar entry point.
 # Helpers and Python live in .aws-sso-status/ (any folder starting with "."
 # is hidden from SwiftBar's plugin manager — see SwiftBar README).

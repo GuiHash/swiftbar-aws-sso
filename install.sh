@@ -119,8 +119,7 @@ info "Install mode: $MODE"
 # ---------------------------------------------------------------------------
 
 chmod +x "$ENTRY_SRC"
-chmod +x "$REPO/$HELPERS_DIRNAME/login.sh"
-chmod +x "$REPO/$HELPERS_DIRNAME/logout.sh"
+chmod +x "$REPO/$HELPERS_DIRNAME/sso.sh"
 # run.py is NOT chmod +x — SwiftBar would otherwise list it as a separate plugin.
 chmod -x "$REPO/$HELPERS_DIRNAME/run.py" 2>/dev/null || true
 
@@ -174,10 +173,11 @@ case "$MODE" in
 
     backup_existing "$HELPERS_DST"
     mkdir -p "$HELPERS_DST"
-    cp -p "$REPO/$HELPERS_DIRNAME/run.py"     "$HELPERS_DST/"
-    cp -p "$REPO/$HELPERS_DIRNAME/login.sh"   "$HELPERS_DST/"
-    cp -p "$REPO/$HELPERS_DIRNAME/logout.sh"  "$HELPERS_DST/"
-    chmod +x "$HELPERS_DST/login.sh" "$HELPERS_DST/logout.sh"
+    cp -p "$REPO/$HELPERS_DIRNAME/run.py"    "$HELPERS_DST/"
+    cp -p "$REPO/$HELPERS_DIRNAME/sso.sh"    "$HELPERS_DST/"
+    cp -p "$REPO/$HELPERS_DIRNAME/common.sh" "$HELPERS_DST/"
+    cp -p "$REPO/$HELPERS_DIRNAME/icon.png"  "$HELPERS_DST/" 2>/dev/null || true
+    chmod +x "$HELPERS_DST/sso.sh"
     chmod -x "$HELPERS_DST/run.py" 2>/dev/null || true
     ok "Copied helpers to $HELPERS_DST/"
     ;;
