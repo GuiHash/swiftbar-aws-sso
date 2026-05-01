@@ -48,8 +48,8 @@ ICON_KO    = "person.badge.minus"
 STS_TIMEOUT_S    = 8.0
 CHECK_INTERVAL_S = 55.0  # background check fires at most once per ~minute
 
-ENTRY     = Path(__file__).resolve()
-ICON_PATH = ENTRY.parent / ".swiftbar-aws-sso" / "icon.png"
+ENTRY           = Path(__file__).resolve()
+NOTIF_ICONS_DIR = ENTRY.parent / ".swiftbar-aws-sso"
 
 
 # ---------------------------------------------------------------------------
@@ -313,11 +313,28 @@ def _mark_check_done():
 # Notifications
 # ---------------------------------------------------------------------------
 
-def _alerter_base_cmd(alerter: str, title: str, message: str, timeout: int) -> list:
+# Pre-rendered PNGs (black silhouette + orange badge on white rounded square).
+# Regenerated via tools/render-notif-icon.swift — see that file for usage.
+_NOTIF_ICON_FILES = {
+    "key":   "notif-key.png",    # person.badge.key   (blue)   — authenticated
+    "minus": "notif-minus.png",  # person.badge.minus (gray)   — not authenticated
+    "clock": "notif-clock.png",  # person.badge.clock (orange) — expired / pending
+}
+
+
+def _notif_icon_for(kind: str):
+    name = _NOTIF_ICON_FILES.get(kind)
+    if not name:
+        return None
+    path = NOTIF_ICONS_DIR / name
+    return path if path.is_file() else None
+
+
+def _alerter_base_cmd(alerter: str, title: str, message: str, timeout: int, icon) -> list:
     cmd = [alerter, "--title", title, "--message", message,
            "--sound", "Glass", "--group", "swiftbar-aws-sso", "--timeout", str(timeout)]
-    if ICON_PATH.is_file():
-        cmd += ["--app-icon", str(ICON_PATH)]
+    if icon and icon.is_file():
+        cmd += ["--app-icon", str(icon)]
     return cmd
 
 
@@ -328,14 +345,14 @@ def _osascript(script: str, timeout: float = 5.0):
         pass
 
 
-def notify(title: str, message: str):
+def notify(title: str, message: str, kind: str):
     """Best-effort fire-and-forget notification (alerter → osascript fallback)."""
     log("notify", f"{title} — {message}")
     alerter = resolve_alerter()
     if alerter:
         try:
             subprocess.Popen(
-                _alerter_base_cmd(alerter, title, message, 30),
+                _alerter_base_cmd(alerter, title, message, 30, _notif_icon_for(kind)),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 close_fds=True,
@@ -357,12 +374,12 @@ def alert(title: str, message: str):
     _osascript(f'display alert "{safe_title}" message "{safe_msg}" as warning', timeout=30.0)
 
 
-def _alerter_wait_for_action(title: str, message: str, action_label: str) -> bool:
+def _alerter_wait_for_action(title: str, message: str, action_label: str, kind: str) -> bool:
     """Show the action notification and block until clicked / timed out / closed."""
     alerter = resolve_alerter()
     if not alerter:
         return False
-    cmd = _alerter_base_cmd(alerter, title, message, 60) + ["--actions", action_label]
+    cmd = _alerter_base_cmd(alerter, title, message, 60, _notif_icon_for(kind)) + ["--actions", action_label]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=70, check=False)
     except (subprocess.TimeoutExpired, OSError):
@@ -370,13 +387,13 @@ def _alerter_wait_for_action(title: str, message: str, action_label: str) -> boo
     return (r.stdout or "").strip() == action_label
 
 
-def notify_with_action(title: str, message: str, action_label: str, on_click_cmd: list):
+def notify_with_action(title: str, message: str, action_label: str, on_click_cmd: list, kind: str):
     """
     Fire a notification with an action button. Returns immediately.
     If the user clicks the action, `on_click_cmd` runs detached.
     """
     args = [sys.executable, "-B", __file__, "--do-action",
-            title, message, action_label] + [str(c) for c in on_click_cmd]
+            title, message, action_label, kind] + [str(c) for c in on_click_cmd]
     try:
         subprocess.Popen(
             args,
@@ -386,7 +403,7 @@ def notify_with_action(title: str, message: str, action_label: str, on_click_cmd
             start_new_session=True,
         )
     except OSError:
-        notify(title, message)
+        notify(title, message, kind)
 
 
 # ---------------------------------------------------------------------------
@@ -405,10 +422,10 @@ def do_login(sso_session: str, profile: str):
     log("login", f"Checking STS for profile: {profile}")
     if sts_works(profile):
         _record_auth_state(True)
-        notify("AWS SSO", "Already authenticated")
+        notify("AWS SSO", "Already authenticated", "key")
         return
 
-    notify("AWS SSO", f"Opening browser to sign in for {profile}…")
+    notify("AWS SSO", f"Opening browser to sign in for {profile}…", "clock")
 
     if sso_session:
         log("login", f"Running: aws sso login --sso-session {sso_session}")
@@ -426,7 +443,7 @@ def do_login(sso_session: str, profile: str):
 
     if r.returncode == 0:
         _record_auth_state(True)
-        notify("AWS SSO", "Signed in")
+        notify("AWS SSO", "Signed in", "key")
     else:
         log("login", f"FAILED (exit {r.returncode}): {(r.stdout or '') + (r.stderr or '')}".strip())
         alert("AWS SSO", f"aws sso login failed (exit {r.returncode}). See: {LOG_FILE}")
@@ -435,7 +452,7 @@ def do_login(sso_session: str, profile: str):
 def do_logout(profile: str):
     aws = resolve_aws_cli()
     if not aws:
-        notify("AWS SSO", "aws CLI not found")
+        notify("AWS SSO", "aws CLI not found", "minus")
         return
     if not profile:
         profile = get_selected_profile()
@@ -445,7 +462,7 @@ def do_logout(profile: str):
     except (subprocess.TimeoutExpired, OSError):
         pass
     _record_auth_state(False)
-    notify("AWS SSO", "Logged out")
+    notify("AWS SSO", "Logged out", "minus")
 
 
 # ---------------------------------------------------------------------------
@@ -490,6 +507,7 @@ def run_background_update():
             f"Session expired for {profile}",
             "Renew",
             [str(ENTRY), "login", sso_session, profile],
+            "clock",
         )
 
 
@@ -563,9 +581,9 @@ def main():
         return
 
     if cmd == "--do-action":
-        title, message, action_label = sys.argv[2], sys.argv[3], sys.argv[4]
-        on_click_cmd = sys.argv[5:]
-        if _alerter_wait_for_action(title, message, action_label):
+        title, message, action_label, kind = sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
+        on_click_cmd = sys.argv[6:]
+        if _alerter_wait_for_action(title, message, action_label, kind):
             try:
                 subprocess.Popen(
                     on_click_cmd,
@@ -586,7 +604,7 @@ def main():
         is_authenticated = sts_works(new_profile)
         _record_auth_state(is_authenticated)
         if is_authenticated:
-            notify("AWS SSO", f"Switched to {new_profile} — credentials OK")
+            notify("AWS SSO", f"Switched to {new_profile} — credentials OK", "key")
         else:
             sso_session = get_sso_session_name(new_profile) or ""
             notify_with_action(
@@ -594,6 +612,7 @@ def main():
                 f"Switched to {new_profile} — not authenticated",
                 "Sign in",
                 [str(ENTRY), "login", sso_session, new_profile],
+                "minus",
             )
         return
 
