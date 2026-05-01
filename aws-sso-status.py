@@ -6,6 +6,7 @@
 # <xbar.desc>Cloud icon in the menu bar; STS check in background; OS notification when the session expires.</xbar.desc>
 # <xbar.dependencies>python3,aws</xbar.dependencies>
 # <swiftbar.schedule>* * * * *</swiftbar.schedule>
+# <swiftbar.environment>[SWIFTBAR_AWS_PROFILE=, AWS=, ALERTER=]</swiftbar.environment>
 # <swiftbar.hideAbout>true</swiftbar.hideAbout>
 # <swiftbar.hideRunInTerminal>true</swiftbar.hideRunInTerminal>
 # <swiftbar.hideLastUpdated>true</swiftbar.hideLastUpdated>
