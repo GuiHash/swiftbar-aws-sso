@@ -1,13 +1,24 @@
 # SwiftBar AWS SSO Status
 
-A minimalist [SwiftBar](https://github.com/swiftbar/SwiftBar) plugin that shows the status of your AWS SSO (IAM Identity Center) session in the macOS menu bar.
+AWS SSO session status in your macOS menu bar — sign in, switch profiles, and open the Console without touching a terminal.
 
-- Cloud icon in the menu bar — filled cloud when credentials are valid, cloud-with-X when the session is expired.
-- Click to **Sign in** (smart: only opens the browser if `aws sts get-caller-identity` fails) or **Sign out**.
-- **Open AWS Console** opens the SSO start URL for the active profile.
-- Optional **Switch default profile** menu when `~/.aws/config` declares several SSO profiles.
-- macOS notifications on login, logout, profile switch, and session expiration — the expiration notice carries a **Renew** action button that re-runs `aws sso login`.
-- Renders instantly from cache; the STS check runs in a background subprocess so the menu bar never blocks on a network call.
+![SwiftBar AWS SSO Status menu](assets/screenshot-menu.jpg)
+
+## Features
+
+**Session status at a glance** — the cloud icon fills when your session is active and shows an × when it expires.
+
+**Sign in / Sign out** — clicking **Sign in** opens the browser SSO flow only if your session is actually expired; **Sign out** ends it immediately.
+
+**Open AWS Console** — jumps to the SSO start URL for the active profile directly in your browser.
+
+**Profile switching** — the **Switch default profile** submenu lets you pick any SSO profile from `~/.aws/config`. The `[default]` block is rewritten automatically, so every subsequent `aws` command picks it up without `--profile`.
+
+**Smart notifications** — notified on login, logout, profile switch, and expiration. The expiration alert includes a one-click **Renew** button (requires [`alerter`](https://github.com/vitorgalvao/alerter)).
+
+![Sign-in notification opening the browser](assets/screenshot-notification-signin.jpg)
+
+![Session-expired notification with Renew action](assets/screenshot-notification.jpg)
 
 ## Requirements
 
@@ -86,7 +97,7 @@ The first time the file is rewritten, `~/.aws/config.swiftbar.bak` is created as
 | --- | --- |
 | `~/Library/Caches/swiftbar-aws-sso-status/state` | `ok` / `expired` from the last tick (used to detect transitions) |
 | `~/Library/Caches/swiftbar-aws-sso-status/last-check` | Timestamp of the last STS check (throttles background refresh) |
-| `~/Library/Logs/swiftbar-aws-sso-status/plugin.log` | Append-only log of login / logout / notification events (rotated at 256 KiB, one `.old` backup) |
+| `~/Library/Logs/swiftbar-aws-sso-status/plugin.log` | Append-only log of login / logout / state transitions / notification events (rotated at 256 KiB, one `.old` backup) |
 | `~/.aws/config.swiftbar.bak` | One-shot backup of `~/.aws/config` before the first profile-switch rewrite |
 
 ## Configuration

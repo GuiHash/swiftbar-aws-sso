@@ -489,6 +489,7 @@ def run_background_update():
     new_state = "ok" if is_authenticated else "expired"
     write_state(new_state)
     if old_state != new_state:
+        log("state", f"{old_state or 'unknown'} → {new_state} (profile {profile})")
         _swiftbar_refresh()
     if old_state == "ok" and new_state == "expired":
         sso_session = get_sso_session_name(profile) or ""
