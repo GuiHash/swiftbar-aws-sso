@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-ENTRY_NAME="aws-sso-status.1m.sh"
+ENTRY_NAME="aws-sso-status.py"
 HELPERS_DIRNAME=".aws-sso-status"
 
 PLUGIN_DIR=""
@@ -71,16 +71,14 @@ remove_path() {
 remove_path "$ENTRY_DST"
 remove_path "$HELPERS_DST"
 
-# State files
-STATE_FILES=(
-  "${HOME}/.aws/swiftbar-profile"
-  "${HOME}/.aws/swiftbar-sso-state"
-  "${HOME}/.aws/swiftbar-sso-just-switched"
-  "${HOME}/.aws/swiftbar-sso-login.log"
+# Cache and log directories
+STATE_PATHS=(
+  "${HOME}/Library/Caches/swiftbar-aws-sso-status"
+  "${HOME}/Library/Logs/swiftbar-aws-sso-status"
 )
 
 if [[ "$PURGE" -eq 0 && "$ASSUME_YES" -eq 0 && -t 0 ]]; then
-  printf 'Also remove plugin state files in ~/.aws/ ? [y/N] '
+  printf 'Also remove plugin cache and logs (~/Library/Caches and ~/Library/Logs) ? [y/N] '
   read -r answer || true
   case "$(printf '%s' "${answer:-}" | tr '[:upper:]' '[:lower:]')" in
     y|yes) PURGE=1 ;;
@@ -88,14 +86,14 @@ if [[ "$PURGE" -eq 0 && "$ASSUME_YES" -eq 0 && -t 0 ]]; then
 fi
 
 if [[ "$PURGE" -eq 1 ]]; then
-  for f in "${STATE_FILES[@]}"; do
-    [[ -e "$f" ]] && rm -f -- "$f" && ok "Removed: $f" || true
+  for f in "${STATE_PATHS[@]}"; do
+    [[ -e "$f" ]] && rm -rf -- "$f" && ok "Removed: $f" || true
   done
   if [[ -e "${HOME}/.aws/config.swiftbar.bak" ]]; then
     warn "Backup of ~/.aws/config kept at ~/.aws/config.swiftbar.bak (delete manually if no longer needed)."
   fi
 else
-  info "State files in ~/.aws/ left in place. Re-run with --purge to delete them."
+  info "Cache and logs left in place. Re-run with --purge to delete them."
 fi
 
 echo
