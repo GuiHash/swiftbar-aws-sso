@@ -221,5 +221,5 @@ echo
 echo "Notes:"
 echo "  • The plugin reads ~/.aws/config to list SSO profiles."
 echo "  • Override the default profile with env var SWIFTBAR_AWS_PROFILE."
-echo "  • Logs:  ~/Library/Logs/swiftbar-aws-sso-status/plugin.log"
+echo "  • Logs:  ~/Library/Logs/swiftbar-aws-sso-status.log"
 echo "  • Cache: ~/Library/Caches/swiftbar-aws-sso-status/"

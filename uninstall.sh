@@ -74,7 +74,7 @@ remove_path "$HELPERS_DST"
 # Cache and log directories
 STATE_PATHS=(
   "${HOME}/Library/Caches/swiftbar-aws-sso-status"
-  "${HOME}/Library/Logs/swiftbar-aws-sso-status"
+  "${HOME}/Library/Logs/swiftbar-aws-sso-status.log"
 )
 
 if [[ "$PURGE" -eq 0 && "$ASSUME_YES" -eq 0 && -t 0 ]]; then

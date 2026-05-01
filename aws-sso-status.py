@@ -36,9 +36,7 @@ CACHE_DIR         = Path.home() / "Library" / "Caches" / "swiftbar-aws-sso-statu
 STATE_FILE        = CACHE_DIR / "state"
 LAST_CHECK_FILE   = CACHE_DIR / "last-check"
 
-LOG_DIR           = Path.home() / "Library" / "Logs" / "swiftbar-aws-sso-status"
-LOG_FILE          = LOG_DIR / "plugin.log"
-LOG_MAX_BYTES     = 256 * 1024
+LOG_FILE          = Path.home() / "Library" / "Logs" / "swiftbar-aws-sso-status.log"
 
 AWS_CONFIG_PATH   = Path.home() / ".aws" / "config"
 
@@ -57,17 +55,8 @@ ICON_PATH = ENTRY.parent / ".aws-sso-status" / "icon.png"
 # ---------------------------------------------------------------------------
 
 def log(action: str, message: str):
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
-        LOG_DIR.mkdir(parents=True, exist_ok=True)
-        if LOG_FILE.exists() and LOG_FILE.stat().st_size > LOG_MAX_BYTES:
-            old = LOG_FILE.with_name(LOG_FILE.name + ".old")
-            try:
-                if old.exists():
-                    old.unlink()
-                LOG_FILE.rename(old)
-            except OSError:
-                pass
-        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         with LOG_FILE.open("a") as f:
             f.write(f"{ts} {action}: {message}\n")
     except OSError:
