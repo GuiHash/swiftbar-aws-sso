@@ -2,13 +2,11 @@
 # Uninstall the SwiftBar AWS SSO Status plugin.
 #
 # Removes the entry script (and copied helpers, if any) from the SwiftBar
-# plugins folder. Optionally cleans state files and logs in ~/.aws/.
+# plugins folder. SwiftBar manages its per-plugin cache and data dirs.
 #
 # Usage:
-#   ./uninstall.sh                       # interactive
+#   ./uninstall.sh                       # default plugins dir
 #   ./uninstall.sh --plugins-dir <path>  # override SwiftBar plugins dir
-#   ./uninstall.sh --purge               # also delete state/logs/profile prefs
-#   ./uninstall.sh --yes                 # non-interactive, keep state files
 
 set -euo pipefail
 
@@ -16,16 +14,12 @@ ENTRY_NAME="aws-sso-status.py"
 HELPERS_DIRNAME=".aws-sso-status"
 
 PLUGIN_DIR=""
-PURGE=0
-ASSUME_YES=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --plugins-dir) PLUGIN_DIR="${2:-}"; shift 2 ;;
-    --purge) PURGE=1; shift ;;
-    --yes|-y) ASSUME_YES=1; shift ;;
     -h|--help)
-      sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
@@ -71,29 +65,8 @@ remove_path() {
 remove_path "$ENTRY_DST"
 remove_path "$HELPERS_DST"
 
-# Cache and log directories
-STATE_PATHS=(
-  "${HOME}/Library/Caches/swiftbar-aws-sso-status"
-  "${HOME}/Library/Logs/swiftbar-aws-sso-status.log"
-)
-
-if [[ "$PURGE" -eq 0 && "$ASSUME_YES" -eq 0 && -t 0 ]]; then
-  printf 'Also remove plugin cache and logs (~/Library/Caches and ~/Library/Logs) ? [y/N] '
-  read -r answer || true
-  case "$(printf '%s' "${answer:-}" | tr '[:upper:]' '[:lower:]')" in
-    y|yes) PURGE=1 ;;
-  esac
-fi
-
-if [[ "$PURGE" -eq 1 ]]; then
-  for f in "${STATE_PATHS[@]}"; do
-    [[ -e "$f" ]] && rm -rf -- "$f" && ok "Removed: $f" || true
-  done
-  if [[ -e "${HOME}/.aws/config.swiftbar.bak" ]]; then
-    warn "Backup of ~/.aws/config kept at ~/.aws/config.swiftbar.bak (delete manually if no longer needed)."
-  fi
-else
-  info "Cache and logs left in place. Re-run with --purge to delete them."
+if [[ -e "${HOME}/.aws/config.swiftbar.bak" ]]; then
+  warn "Backup of ~/.aws/config kept at ~/.aws/config.swiftbar.bak (delete manually if no longer needed)."
 fi
 
 echo

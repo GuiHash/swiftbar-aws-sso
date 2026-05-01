@@ -32,11 +32,13 @@ from pathlib import Path
 
 FALLBACK_DEFAULT_PROFILE = "default"
 
-CACHE_DIR         = Path.home() / "Library" / "Caches" / "swiftbar-aws-sso-status"
-STATE_FILE        = CACHE_DIR / "state"
-LAST_CHECK_FILE   = CACHE_DIR / "last-check"
+_PLUGIN_NAME    = "swiftbar-aws-sso-status"
+CACHE_DIR       = Path(os.environ.get("SWIFTBAR_PLUGIN_CACHE_PATH",
+                       Path.home() / "Library" / "Caches" / _PLUGIN_NAME))
+STATE_FILE      = CACHE_DIR / "state"
+LAST_CHECK_FILE = CACHE_DIR / "last-check"
 
-LOG_FILE          = Path.home() / "Library" / "Logs" / "swiftbar-aws-sso-status.log"
+LOG_FILE        = Path.home() / "Library" / "Logs" / _PLUGIN_NAME / "plugin.log"
 
 AWS_CONFIG_PATH   = Path.home() / ".aws" / "config"
 
