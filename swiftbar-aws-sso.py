@@ -1,5 +1,5 @@
 #!/usr/bin/env -S python3 -B
-# <xbar.title>AWS SSO Status</xbar.title>
+# <xbar.title>AWS SSO</xbar.title>
 # <xbar.version>1.0.0</xbar.version>
 # <xbar.author>Guillaume Hertault</xbar.author>
 # <xbar.author.github>guihash</xbar.author.github>
@@ -32,7 +32,7 @@ from pathlib import Path
 
 FALLBACK_DEFAULT_PROFILE = "default"
 
-_PLUGIN_NAME    = "swiftbar-aws-sso-status"
+_PLUGIN_NAME    = "swiftbar-aws-sso"
 CACHE_DIR       = Path(os.environ.get("SWIFTBAR_PLUGIN_CACHE_PATH",
                        Path.home() / "Library" / "Caches" / _PLUGIN_NAME))
 STATE_FILE      = CACHE_DIR / "state"
@@ -49,7 +49,7 @@ STS_TIMEOUT_S    = 8.0
 CHECK_INTERVAL_S = 55.0  # background check fires at most once per ~minute
 
 ENTRY     = Path(__file__).resolve()
-ICON_PATH = ENTRY.parent / ".aws-sso-status" / "icon.png"
+ICON_PATH = ENTRY.parent / ".swiftbar-aws-sso" / "icon.png"
 
 
 # ---------------------------------------------------------------------------
@@ -197,7 +197,7 @@ def apply_default_profile(profile_name: str) -> bool:
 
     new_lines = [
         "[default]",
-        "# managed by SwiftBar plugin (aws-sso-status) — edits here are overwritten on profile switch",
+        "# managed by SwiftBar plugin (swiftbar-aws-sso) — edits here are overwritten on profile switch",
     ]
     for key, value in config[section].items():
         new_lines.append(f"{key} = {value}")
@@ -315,7 +315,7 @@ def _mark_check_done():
 
 def _alerter_base_cmd(alerter: str, title: str, message: str, timeout: int) -> list:
     cmd = [alerter, "--title", title, "--message", message,
-           "--sound", "Glass", "--group", "aws-sso-status", "--timeout", str(timeout)]
+           "--sound", "Glass", "--group", "swiftbar-aws-sso", "--timeout", str(timeout)]
     if ICON_PATH.is_file():
         cmd += ["--app-icon", str(ICON_PATH)]
     return cmd

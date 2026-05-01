@@ -1,8 +1,8 @@
-# SwiftBar AWS SSO Status
+# SwiftBar AWS SSO
 
 AWS SSO session status in your macOS menu bar — sign in, switch profiles, and open the Console without touching a terminal.
 
-![SwiftBar AWS SSO Status menu](assets/screenshot-menu.jpg)
+![SwiftBar AWS SSO menu](assets/screenshot-menu.jpg)
 
 ## Features
 
@@ -31,8 +31,8 @@ AWS SSO session status in your macOS menu bar — sign in, switch profiles, and 
 ## Install
 
 ```bash
-git clone https://github.com/<your-user>/swiftbar-aws-sso-status.git
-cd swiftbar-aws-sso-status
+git clone https://github.com/<your-user>/swiftbar-aws-sso.git
+cd swiftbar-aws-sso
 ./install.sh
 ```
 
@@ -61,7 +61,7 @@ After installation, open SwiftBar (`open -a SwiftBar`) and trigger **Refresh all
 
 ## How it works
 
-SwiftBar runs `aws-sso-status.py` every minute (schedule declared via the `<swiftbar.schedule>` metadata tag). Each tick:
+SwiftBar runs `swiftbar-aws-sso.py` every minute (schedule declared via the `<swiftbar.schedule>` metadata tag). Each tick:
 
 1. **Instant render**: the menu is drawn immediately from the last cached state (`$SWIFTBAR_PLUGIN_CACHE_PATH/state`), so the menu bar never waits on a network call.
 2. **Background check**: if the previous STS check is older than ~55s, a subprocess is spawned to run `aws sts get-caller-identity --profile <profile>` (8s timeout) and update the cache.
@@ -75,7 +75,7 @@ Clicking **Sign in** re-invokes the entry script with `login` as a parameter, wh
 
 1. Re-checks `aws sts get-caller-identity` — if already valid, it just notifies and exits.
 2. Otherwise runs `aws sso login --sso-session <session>` (preferred) or `aws sso login --profile <profile>` and opens the system browser.
-3. Logs everything to `~/Library/Logs/swiftbar-aws-sso-status/plugin.log` and surfaces a macOS notification on success/failure.
+3. Logs everything to `~/Library/Logs/swiftbar-aws-sso/plugin.log` and surfaces a macOS notification on success/failure.
 
 When the cached state transitions `ok → expired`, the notification carries a **Renew** action button (requires `alerter`) that re-runs the login flow without having to open the menu.
 
@@ -97,7 +97,7 @@ The first time the file is rewritten, `~/.aws/config.swiftbar.bak` is created as
 | --- | --- |
 | `$SWIFTBAR_PLUGIN_CACHE_PATH/state` | `ok` / `expired` from the last tick (used to detect transitions) |
 | `$SWIFTBAR_PLUGIN_CACHE_PATH/last-check` | Timestamp of the last STS check (throttles background refresh) |
-| `~/Library/Logs/swiftbar-aws-sso-status/plugin.log` | Append-only log of login / logout / state transitions / notification events |
+| `~/Library/Logs/swiftbar-aws-sso/plugin.log` | Append-only log of login / logout / state transitions / notification events |
 | `~/.aws/config.swiftbar.bak` | One-shot backup of `~/.aws/config` before the first profile-switch rewrite |
 
 `$SWIFTBAR_PLUGIN_CACHE_PATH` is set by SwiftBar at runtime (typically `~/Library/Caches/com.ameba.SwiftBar/Plugins/<plugin>`).

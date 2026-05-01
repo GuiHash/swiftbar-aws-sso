@@ -1,5 +1,5 @@
 #!/bin/bash
-# Uninstall the SwiftBar AWS SSO Status plugin.
+# Uninstall the SwiftBar AWS SSO plugin.
 #
 # Removes the entry script (and copied helpers, if any) from the SwiftBar
 # plugins folder. SwiftBar manages its per-plugin cache and data dirs.
@@ -10,8 +10,8 @@
 
 set -euo pipefail
 
-ENTRY_NAME="aws-sso-status.py"
-HELPERS_DIRNAME=".aws-sso-status"
+ENTRY_NAME="swiftbar-aws-sso.py"
+HELPERS_DIRNAME=".swiftbar-aws-sso"
 
 PLUGIN_DIR=""
 

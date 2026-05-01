@@ -1,5 +1,5 @@
 #!/bin/bash
-# Install the SwiftBar AWS SSO Status plugin into your SwiftBar plugins folder.
+# Install the SwiftBar AWS SSO plugin into your SwiftBar plugins folder.
 #
 # Two install modes:
 #   --symlink   symlinks the entry script (recommended: `git pull` updates the live plugin)
@@ -17,9 +17,9 @@
 set -euo pipefail
 
 REPO="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENTRY_NAME="aws-sso-status.py"
+ENTRY_NAME="swiftbar-aws-sso.py"
 ENTRY_SRC="$REPO/$ENTRY_NAME"
-HELPERS_DIRNAME=".aws-sso-status"
+HELPERS_DIRNAME=".swiftbar-aws-sso"
 
 MODE=""
 PLUGIN_DIR=""
@@ -221,4 +221,4 @@ echo
 echo "Notes:"
 echo "  • The plugin reads ~/.aws/config to list SSO profiles."
 echo "  • Override the default profile with env var SWIFTBAR_AWS_PROFILE."
-echo "  • Logs: ~/Library/Logs/swiftbar-aws-sso-status/plugin.log"
+echo "  • Logs: ~/Library/Logs/swiftbar-aws-sso/plugin.log"
