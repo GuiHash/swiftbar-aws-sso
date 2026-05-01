@@ -48,11 +48,11 @@ After installation, open SwiftBar (`open -a SwiftBar`) and trigger **Refresh all
 
 ## How it works
 
-Every minute, SwiftBar runs `aws-sso-status.1m.py`. The script:
+Every minute, SwiftBar runs `aws-sso-status.py` (schedule declared in plugin metadata). The script:
 
 1. Resolves the active profile by matching the contents of `[default]` against each `[profile <name>]` block in `~/.aws/config` (env var `SWIFTBAR_AWS_PROFILE` or first SSO profile as fallback).
 2. Calls `aws sts get-caller-identity --profile <profile>` (8s timeout).
-3. Renders the menu bar icon (`cloud.fill` green or `xmark.icloud.fill` red).
+3. Renders the menu bar icon (`icloud.fill` when authenticated, `xmark.icloud.fill` otherwise).
 4. Compares the new state with the previous tick (`~/Library/Caches/swiftbar-aws-sso-status/state`) and fires a notification on `ok → expired`.
 
 ### Login flow

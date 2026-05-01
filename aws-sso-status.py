@@ -1,10 +1,11 @@
 #!/usr/bin/env -S python3 -B
-# <swiftbar.title>AWS SSO Status</swiftbar.title>
-# <swiftbar.version>3.3.0</swiftbar.version>
-# <swiftbar.author>guihash</swiftbar.author>
-# <swiftbar.author.github>guihash</swiftbar.author.github>
-# <swiftbar.desc>Cloud icon in the menu bar; STS check in background; OS notification when the session expires.</swiftbar.desc>
-# <swiftbar.dependencies>python3,aws</swiftbar.dependencies>
+# <xbar.title>AWS SSO Status</xbar.title>
+# <xbar.version>1.0.0</xbar.version>
+# <xbar.author>Guillaume Hertault</xbar.author>
+# <xbar.author.github>guihash</xbar.author.github>
+# <xbar.desc>Cloud icon in the menu bar; STS check in background; OS notification when the session expires.</xbar.desc>
+# <xbar.dependencies>python3,aws</xbar.dependencies>
+# <swiftbar.schedule>* * * * *</swiftbar.schedule>
 # <swiftbar.hideAbout>true</swiftbar.hideAbout>
 # <swiftbar.hideRunInTerminal>true</swiftbar.hideRunInTerminal>
 # <swiftbar.hideLastUpdated>true</swiftbar.hideLastUpdated>

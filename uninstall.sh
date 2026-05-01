@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-ENTRY_NAME="aws-sso-status.1m.py"
+ENTRY_NAME="aws-sso-status.py"
 HELPERS_DIRNAME=".aws-sso-status"
 
 PLUGIN_DIR=""

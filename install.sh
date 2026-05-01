@@ -16,7 +16,7 @@
 set -euo pipefail
 
 REPO="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENTRY_NAME="aws-sso-status.1m.py"
+ENTRY_NAME="aws-sso-status.py"
 ENTRY_SRC="$REPO/$ENTRY_NAME"
 HELPERS_DIRNAME=".aws-sso-status"
 
