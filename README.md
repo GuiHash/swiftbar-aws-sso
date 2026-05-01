@@ -63,7 +63,7 @@ After installation, open SwiftBar (`open -a SwiftBar`) and trigger **Refresh all
 
 SwiftBar runs `aws-sso-status.py` every minute (schedule declared via the `<swiftbar.schedule>` metadata tag). Each tick:
 
-1. **Instant render**: the menu is drawn immediately from the last cached state (`~/Library/Caches/swiftbar-aws-sso-status/state`), so the menu bar never waits on a network call.
+1. **Instant render**: the menu is drawn immediately from the last cached state (`$SWIFTBAR_PLUGIN_CACHE_PATH/state`), so the menu bar never waits on a network call.
 2. **Background check**: if the previous STS check is older than ~55s, a subprocess is spawned to run `aws sts get-caller-identity --profile <profile>` (8s timeout) and update the cache.
 3. **State transition**: when the cached state changes (e.g. `ok → expired`), the subprocess fires a macOS notification and pings SwiftBar to refresh the menu bar (`swiftbar://refreshPlugin`).
 
@@ -95,10 +95,12 @@ The first time the file is rewritten, `~/.aws/config.swiftbar.bak` is created as
 
 | Path | Purpose |
 | --- | --- |
-| `~/Library/Caches/swiftbar-aws-sso-status/state` | `ok` / `expired` from the last tick (used to detect transitions) |
-| `~/Library/Caches/swiftbar-aws-sso-status/last-check` | Timestamp of the last STS check (throttles background refresh) |
-| `~/Library/Logs/swiftbar-aws-sso-status/plugin.log` | Append-only log of login / logout / state transitions / notification events (rotated at 256 KiB, one `.old` backup) |
+| `$SWIFTBAR_PLUGIN_CACHE_PATH/state` | `ok` / `expired` from the last tick (used to detect transitions) |
+| `$SWIFTBAR_PLUGIN_CACHE_PATH/last-check` | Timestamp of the last STS check (throttles background refresh) |
+| `~/Library/Logs/swiftbar-aws-sso-status/plugin.log` | Append-only log of login / logout / state transitions / notification events |
 | `~/.aws/config.swiftbar.bak` | One-shot backup of `~/.aws/config` before the first profile-switch rewrite |
+
+`$SWIFTBAR_PLUGIN_CACHE_PATH` is set by SwiftBar at runtime (typically `~/Library/Caches/com.ameba.SwiftBar/Plugins/<plugin>`).
 
 ## Configuration
 
