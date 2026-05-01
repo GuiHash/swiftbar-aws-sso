@@ -22,11 +22,15 @@ AWS SSO session status in your macOS menu bar — sign in, switch profiles, and 
 
 ## Requirements
 
-- macOS with [SwiftBar](https://github.com/swiftbar/SwiftBar) (`brew install --cask swiftbar`)
-- [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) (`brew install awscli`)
-- Python 3 (ships with macOS Command Line Tools)
-- An `~/.aws/config` already configured with one or more SSO profiles (see [AWS docs](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sso.html))
-- *(Optional)* [`alerter`](https://github.com/vitorgalvao/alerter) for notifications with clickable action buttons (`brew install vitorgalvao/tiny-scripts/alerter`). Without it, the plugin falls back to plain `osascript` notifications and the **Renew** action button is unavailable.
+Three things must be in place before you run the installer:
+
+- **Homebrew** — [brew.sh](https://brew.sh) (used by the installer to fetch dependencies)
+- **Python 3** — ships with macOS Command Line Tools (`xcode-select --install` if missing)
+- **`~/.aws/config`** configured with one or more SSO profiles — see the [AWS docs](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sso.html)
+
+Everything else — [SwiftBar](https://github.com/swiftbar/SwiftBar), [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html), and the optional [`alerter`](https://github.com/vitorgalvao/alerter) — can be installed automatically by the installer (see below).
+
+> **Note on `alerter`:** without it the plugin falls back to plain `osascript` notifications and the one-click **Renew** action button is unavailable.
 
 ## Install
 
@@ -36,7 +40,13 @@ cd swiftbar-aws-sso
 ./install.sh
 ```
 
-The installer will ask for:
+The installer detects any missing dependencies (SwiftBar, AWS CLI, alerter) and prompts you to install them via Homebrew. Pass `--install-deps` to skip the prompt in non-interactive mode:
+
+```bash
+./install.sh --install-deps --symlink --yes   # non-interactive: install deps + accept all defaults
+```
+
+It will also ask for:
 
 1. The SwiftBar plugins directory (auto-detected from `defaults read com.ameba.SwiftBar PluginDirectory`).
 2. The install mode:
