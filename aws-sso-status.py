@@ -59,6 +59,7 @@ ICON_PATH = ENTRY.parent / ".aws-sso-status" / "icon.png"
 def log(action: str, message: str):
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
+        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
         with LOG_FILE.open("a") as f:
             f.write(f"{ts} {action}: {message}\n")
     except OSError:

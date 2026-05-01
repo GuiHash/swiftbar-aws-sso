@@ -97,7 +97,7 @@ The first time the file is rewritten, `~/.aws/config.swiftbar.bak` is created as
 | --- | --- |
 | `$SWIFTBAR_PLUGIN_CACHE_PATH/state` | `ok` / `expired` from the last tick (used to detect transitions) |
 | `$SWIFTBAR_PLUGIN_CACHE_PATH/last-check` | Timestamp of the last STS check (throttles background refresh) |
-| `~/Library/Logs/swiftbar-aws-sso-status/plugin.log` | Append-only log of login / logout / state transitions / notification events (rotated at 256 KiB, one `.old` backup) |
+| `~/Library/Logs/swiftbar-aws-sso-status/plugin.log` | Append-only log of login / logout / state transitions / notification events |
 | `~/.aws/config.swiftbar.bak` | One-shot backup of `~/.aws/config` before the first profile-switch rewrite |
 
 `$SWIFTBAR_PLUGIN_CACHE_PATH` is set by SwiftBar at runtime (typically `~/Library/Caches/com.ameba.SwiftBar/Plugins/<plugin>`).
