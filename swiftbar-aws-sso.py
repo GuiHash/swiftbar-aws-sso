@@ -42,8 +42,8 @@ LOG_FILE        = Path.home() / "Library" / "Logs" / _PLUGIN_NAME / "plugin.log"
 
 AWS_CONFIG_PATH   = Path.home() / ".aws" / "config"
 
-ICON_OK  = "icloud.fill"
-ICON_KO  = "xmark.icloud.fill"
+ICON_OK    = "person.badge.key"
+ICON_KO    = "person.badge.minus"
 
 STS_TIMEOUT_S    = 8.0
 CHECK_INTERVAL_S = 55.0  # background check fires at most once per ~minute
@@ -531,6 +531,7 @@ def render_menu():
         print(f" | sfimage={ICON_KO}")
 
     print("---")
+    print(f"AWS SSO")
     print(f"Profile: {profile}")
     print(f"Status: {'active' if is_authenticated else 'not authenticated'}")
 
