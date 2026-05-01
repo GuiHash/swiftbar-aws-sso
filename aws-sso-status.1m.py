@@ -1,10 +1,16 @@
 #!/usr/bin/env -S python3 -B
-# <swiftbar.refreshOnOpen>true</swiftbar.refreshOnOpen>
-# <swiftbar.version>3.3.0</swiftbar.version>
 # <swiftbar.title>AWS SSO Status</swiftbar.title>
+# <swiftbar.version>3.3.0</swiftbar.version>
 # <swiftbar.author>guihash</swiftbar.author>
+# <swiftbar.author.github>guihash</swiftbar.author.github>
 # <swiftbar.desc>Cloud icon in the menu bar; STS check in background; OS notification when the session expires.</swiftbar.desc>
-# Do not chmod +x — SwiftBar lists every executable in the plugin folder as a menu plugin.
+# <swiftbar.dependencies>python3,aws</swiftbar.dependencies>
+# <swiftbar.hideAbout>true</swiftbar.hideAbout>
+# <swiftbar.hideRunInTerminal>true</swiftbar.hideRunInTerminal>
+# <swiftbar.hideLastUpdated>true</swiftbar.hideLastUpdated>
+# <swiftbar.hideSwiftBar>true</swiftbar.hideSwiftBar>
+# <swiftbar.hideDisablePlugin>true</swiftbar.hideDisablePlugin>
+# <swiftbar.refreshOnOpen>true</swiftbar.refreshOnOpen>
 """
 AWS SSO Session Status for SwiftBar.
 
@@ -19,41 +25,51 @@ import shutil
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 FALLBACK_DEFAULT_PROFILE = "default"
 
-STATE_FILE        = Path.home() / ".aws" / "swiftbar-sso-state"
-LAST_CHECK_FILE   = Path.home() / ".aws" / "swiftbar-sso-last-check"
+CACHE_DIR         = Path.home() / "Library" / "Caches" / "swiftbar-aws-sso-status"
+STATE_FILE        = CACHE_DIR / "state"
+LAST_CHECK_FILE   = CACHE_DIR / "last-check"
+
+LOG_DIR           = Path.home() / "Library" / "Logs" / "swiftbar-aws-sso-status"
+LOG_FILE          = LOG_DIR / "plugin.log"
+LOG_MAX_BYTES     = 256 * 1024
+
 AWS_CONFIG_PATH   = Path.home() / ".aws" / "config"
 
-ICON_OK  = "cloud.fill"
+ICON_OK  = "icloud.fill"
 ICON_KO  = "xmark.icloud.fill"
-COLOR_OK = "#7ED321,#7ED321"
-COLOR_KO = "#FF3B30,#FF6B5E"
 
-STS_TIMEOUT_S   = 8.0
+STS_TIMEOUT_S    = 8.0
 CHECK_INTERVAL_S = 55.0  # background check fires at most once per ~minute
 
+ENTRY     = Path(__file__).resolve()
+ICON_PATH = ENTRY.parent / ".aws-sso-status" / "icon.png"
+
 
 # ---------------------------------------------------------------------------
-# Path helpers
+# Logging
 # ---------------------------------------------------------------------------
 
-def _helpers_dir() -> Path:
-    here = Path(__file__).resolve().parent
-    if (here / "sso.sh").is_file():
-        return here
-    return here.parent
-
-
-def _swiftbar_entry() -> Path:
-    root = Path(__file__).resolve().parent.parent
-    return root / "aws-sso-status.1m.sh"
-
-
-HELPERS = _helpers_dir()
-ENTRY   = _swiftbar_entry()
+def log(action: str, message: str):
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        if LOG_FILE.exists() and LOG_FILE.stat().st_size > LOG_MAX_BYTES:
+            old = LOG_FILE.with_name(LOG_FILE.name + ".old")
+            try:
+                if old.exists():
+                    old.unlink()
+                LOG_FILE.rename(old)
+            except OSError:
+                pass
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with LOG_FILE.open("a") as f:
+            f.write(f"{ts} {action}: {message}\n")
+    except OSError:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -223,20 +239,28 @@ def apply_default_profile(profile_name: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# AWS / STS check
+# Tool resolution
 # ---------------------------------------------------------------------------
 
-def resolve_aws_cli():
-    env_aws = os.environ.get("AWS", "").strip()
-    if env_aws and os.path.isfile(env_aws) and os.access(env_aws, os.X_OK):
-        return env_aws
-    which = shutil.which("aws")
+def _resolve_tool(env_name: str, name: str, *fallbacks: str):
+    env_val = os.environ.get(env_name, "").strip()
+    if env_val and os.path.isfile(env_val) and os.access(env_val, os.X_OK):
+        return env_val
+    which = shutil.which(name)
     if which:
         return which
-    for p in ("/opt/homebrew/bin/aws", "/usr/local/bin/aws"):
+    for p in fallbacks:
         if os.path.isfile(p) and os.access(p, os.X_OK):
             return p
     return None
+
+
+def resolve_aws_cli():
+    return _resolve_tool("AWS", "aws", "/opt/homebrew/bin/aws", "/usr/local/bin/aws")
+
+
+def resolve_alerter():
+    return _resolve_tool("ALERTER", "alerter", "/opt/homebrew/bin/alerter", "/usr/local/bin/alerter")
 
 
 def sts_works(profile: str) -> bool:
@@ -270,6 +294,7 @@ def read_state() -> str:
 
 def write_state(state: str):
     try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
         STATE_FILE.write_text(state)
     except OSError:
         pass
@@ -284,6 +309,7 @@ def _seconds_since_last_check() -> float:
 
 def _mark_check_done():
     try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
         LAST_CHECK_FILE.write_text(str(time.time()))
     except OSError:
         pass
@@ -293,30 +319,24 @@ def _mark_check_done():
 # Notifications
 # ---------------------------------------------------------------------------
 
-def resolve_alerter():
-    env_val = os.environ.get("ALERTER", "").strip()
-    if env_val and os.path.isfile(env_val) and os.access(env_val, os.X_OK):
-        return env_val
-    which = shutil.which("alerter")
-    if which:
-        return which
-    for p in ("/opt/homebrew/bin/alerter", "/usr/local/bin/alerter"):
-        if os.path.isfile(p) and os.access(p, os.X_OK):
-            return p
-    return None
-
-
 def _alerter_base_cmd(alerter: str, title: str, message: str, timeout: int) -> list:
-    icon = str(Path(__file__).resolve().parent / "icon.png")
     cmd = [alerter, "--title", title, "--message", message,
            "--sound", "Glass", "--group", "aws-sso-status", "--timeout", str(timeout)]
-    if os.path.isfile(icon):
-        cmd += ["--app-icon", icon]
+    if ICON_PATH.is_file():
+        cmd += ["--app-icon", str(ICON_PATH)]
     return cmd
+
+
+def _osascript(script: str, timeout: float = 5.0):
+    try:
+        subprocess.run(["osascript", "-e", script], capture_output=True, timeout=timeout, check=False)
+    except (subprocess.TimeoutExpired, OSError):
+        pass
 
 
 def notify(title: str, message: str):
     """Best-effort fire-and-forget notification (alerter → osascript fallback)."""
+    log("notify", f"{title} — {message}")
     alerter = resolve_alerter()
     if alerter:
         try:
@@ -332,11 +352,15 @@ def notify(title: str, message: str):
             pass
     safe_msg = message.replace('"', '\\"')
     safe_title = title.replace('"', '\\"')
-    script = f'display notification "{safe_msg}" with title "{safe_title}" sound name "Glass"'
-    try:
-        subprocess.run(["osascript", "-e", script], capture_output=True, timeout=5, check=False)
-    except (subprocess.TimeoutExpired, OSError):
-        pass
+    _osascript(f'display notification "{safe_msg}" with title "{safe_title}" sound name "Glass"')
+
+
+def alert(title: str, message: str):
+    """Modal warning dialog — more visible than `notify` for unrecoverable errors."""
+    log("alert", f"{title} — {message}")
+    safe_msg = message.replace('"', '\\"')
+    safe_title = title.replace('"', '\\"')
+    _osascript(f'display alert "{safe_title}" message "{safe_msg}" as warning', timeout=30.0)
 
 
 def _alerter_wait_for_action(title: str, message: str, action_label: str) -> bool:
@@ -372,6 +396,65 @@ def notify_with_action(title: str, message: str, action_label: str, on_click_cmd
 
 
 # ---------------------------------------------------------------------------
+# Login / Logout
+# ---------------------------------------------------------------------------
+
+def do_login(sso_session: str, profile: str):
+    aws = resolve_aws_cli()
+    if not aws:
+        alert("AWS SSO", "aws CLI not found. Install AWS CLI v2 or set AWS=/path/to/aws")
+        return
+
+    if not profile:
+        profile = get_selected_profile()
+
+    log("login", f"Checking STS for profile: {profile}")
+    if sts_works(profile):
+        _record_auth_state(True)
+        notify("AWS SSO", "Already authenticated")
+        return
+
+    notify("AWS SSO", f"Opening browser to sign in for {profile}…")
+
+    if sso_session:
+        log("login", f"Running: aws sso login --sso-session {sso_session}")
+        cmd = [aws, "sso", "login", "--sso-session", sso_session]
+    else:
+        log("login", f"Running: aws sso login --profile {profile}")
+        cmd = [aws, "sso", "login", "--profile", profile]
+
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    except OSError as e:
+        log("login", f"FAILED to invoke aws CLI: {e}")
+        alert("AWS SSO", f"aws sso login could not run: {e}. See: {LOG_FILE}")
+        return
+
+    if r.returncode == 0:
+        _record_auth_state(True)
+        notify("AWS SSO", "Signed in")
+    else:
+        log("login", f"FAILED (exit {r.returncode}): {(r.stdout or '') + (r.stderr or '')}".strip())
+        alert("AWS SSO", f"aws sso login failed (exit {r.returncode}). See: {LOG_FILE}")
+
+
+def do_logout(profile: str):
+    aws = resolve_aws_cli()
+    if not aws:
+        notify("AWS SSO", "aws CLI not found")
+        return
+    if not profile:
+        profile = get_selected_profile()
+    log("logout", f"Running: aws sso logout (profile {profile})")
+    try:
+        subprocess.run([aws, "sso", "logout"], capture_output=True, timeout=10, check=False)
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+    _record_auth_state(False)
+    notify("AWS SSO", "Logged out")
+
+
+# ---------------------------------------------------------------------------
 # Background STS update
 # ---------------------------------------------------------------------------
 
@@ -383,6 +466,16 @@ def _swiftbar_refresh():
         )
     except (subprocess.TimeoutExpired, OSError):
         pass
+
+
+def _record_auth_state(authenticated: bool):
+    """Pin the cached state to a fresh truth and refresh SwiftBar.
+    Notification-triggered actions don't get SwiftBar's automatic refresh,
+    so we always nudge the menu bar ourselves.
+    """
+    _mark_check_done()
+    write_state("ok" if authenticated else "expired")
+    _swiftbar_refresh()
 
 
 def run_background_update():
@@ -397,12 +490,11 @@ def run_background_update():
         _swiftbar_refresh()
     if old_state == "ok" and new_state == "expired":
         sso_session = get_sso_session_name(profile) or ""
-        sso_sh = str(HELPERS / "sso.sh")
         notify_with_action(
             "AWS SSO",
             f"Session expired for {profile}",
             "Renew",
-            [sso_sh, "login", sso_session, profile],
+            [str(ENTRY), "login", sso_session, profile],
         )
 
 
@@ -423,56 +515,10 @@ def _spawn_background_update():
 # Main
 # ---------------------------------------------------------------------------
 
-def main():
-    if len(sys.argv) > 1 and sys.argv[1] == "--update":
-        run_background_update()
-        sys.exit(0)
-
-    if len(sys.argv) > 1 and sys.argv[1] == "--do-action":
-        title, message, action_label = sys.argv[2], sys.argv[3], sys.argv[4]
-        on_click_cmd = sys.argv[5:]
-        if _alerter_wait_for_action(title, message, action_label):
-            try:
-                subprocess.Popen(
-                    on_click_cmd,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    close_fds=True,
-                    start_new_session=True,
-                )
-            except OSError:
-                pass
-        sys.exit(0)
-
-    if len(sys.argv) > 1 and sys.argv[1] == "--get-profile":
-        print(get_selected_profile())
-        sys.exit(0)
-
-    if len(sys.argv) > 1 and sys.argv[1] == "select-profile":
-        if len(sys.argv) > 2:
-            new_profile = sys.argv[2]
-            apply_default_profile(new_profile)
-            _mark_check_done()
-            is_authenticated = sts_works(new_profile)
-            write_state("ok" if is_authenticated else "expired")
-            if is_authenticated:
-                notify("AWS SSO", f"Switched to {new_profile} — credentials OK")
-            else:
-                sso_session = get_sso_session_name(new_profile) or ""
-                sso_sh = str(HELPERS / "sso.sh")
-                notify_with_action(
-                    "AWS SSO",
-                    f"Switched to {new_profile} — not authenticated",
-                    "Sign in",
-                    [sso_sh, "login", sso_session, new_profile],
-                )
-        sys.exit(0)
-
+def render_menu():
     profile = get_selected_profile()
     sso_session = get_sso_session_name(profile) or ""
-    sso_sh = HELPERS / "sso.sh"
 
-    # Render immediately from cached state — no network call here.
     cached_state = read_state()
     if cached_state == "":
         # First launch: no cached state yet, do a synchronous check once.
@@ -481,14 +527,13 @@ def main():
         write_state("ok" if is_authenticated else "expired")
     else:
         is_authenticated = cached_state == "ok"
-        # Kick off a background STS check if the last one is stale.
         if _seconds_since_last_check() > CHECK_INTERVAL_S:
             _spawn_background_update()
 
     if is_authenticated:
-        print(f" | sfimage={ICON_OK} sfcolor={COLOR_OK}")
+        print(f" | sfimage={ICON_OK}")
     else:
-        print(f" | sfimage={ICON_KO} sfcolor={COLOR_KO}")
+        print(f" | sfimage={ICON_KO}")
 
     print("---")
     print(f"Profile: {profile}")
@@ -502,17 +547,73 @@ def main():
             mark = "✓ " if p == profile else ""
             print(f"--{mark}{p} | bash={ENTRY} param0=select-profile param1={p} terminal=false refresh=true")
 
-
     print("---")
-  
+
     start_url = get_start_url(profile)
     if start_url:
         print(f"Open AWS Console | href={start_url}")
 
     if is_authenticated:
-        print(f"Sign out | bash={sso_sh} param0=logout param1={profile} terminal=false refresh=true")
+        print(f"Sign out | bash={ENTRY} param0=logout param1={profile} terminal=false refresh=true")
     else:
-        print(f"Sign in | bash={sso_sh} param0=login param1={sso_session} param2={profile} terminal=false refresh=true")
+        print(f"Sign in | bash={ENTRY} param0=login param1={sso_session} param2={profile} terminal=false refresh=true")
+
+
+def main():
+    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+
+    if cmd == "--update":
+        run_background_update()
+        return
+
+    if cmd == "--do-action":
+        title, message, action_label = sys.argv[2], sys.argv[3], sys.argv[4]
+        on_click_cmd = sys.argv[5:]
+        if _alerter_wait_for_action(title, message, action_label):
+            try:
+                subprocess.Popen(
+                    on_click_cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    close_fds=True,
+                    start_new_session=True,
+                )
+            except OSError:
+                pass
+        return
+
+    if cmd == "select-profile":
+        if len(sys.argv) < 3:
+            return
+        new_profile = sys.argv[2]
+        apply_default_profile(new_profile)
+        is_authenticated = sts_works(new_profile)
+        _record_auth_state(is_authenticated)
+        if is_authenticated:
+            notify("AWS SSO", f"Switched to {new_profile} — credentials OK")
+        else:
+            sso_session = get_sso_session_name(new_profile) or ""
+            notify_with_action(
+                "AWS SSO",
+                f"Switched to {new_profile} — not authenticated",
+                "Sign in",
+                [str(ENTRY), "login", sso_session, new_profile],
+            )
+        return
+
+    if cmd == "login":
+        sso_session = sys.argv[2] if len(sys.argv) > 2 else ""
+        profile     = sys.argv[3] if len(sys.argv) > 3 else ""
+        do_login(sso_session, profile)
+        return
+
+    if cmd == "logout":
+        profile = sys.argv[2] if len(sys.argv) > 2 else ""
+        do_logout(profile)
+        return
+
+    render_menu()
+
 
 if __name__ == "__main__":
     main()

@@ -48,20 +48,20 @@ After installation, open SwiftBar (`open -a SwiftBar`) and trigger **Refresh all
 
 ## How it works
 
-Every minute, SwiftBar runs `aws-sso-status.1m.sh`, which delegates to `.aws-sso-status/run.py`. The script:
+Every minute, SwiftBar runs `aws-sso-status.1m.py`. The script:
 
 1. Resolves the active profile by matching the contents of `[default]` against each `[profile <name>]` block in `~/.aws/config` (env var `SWIFTBAR_AWS_PROFILE` or first SSO profile as fallback).
 2. Calls `aws sts get-caller-identity --profile <profile>` (8s timeout).
 3. Renders the menu bar icon (`cloud.fill` green or `xmark.icloud.fill` red).
-4. Compares the new state with the previous tick (`~/.aws/swiftbar-sso-state`) and fires a notification on `ok → expired`.
+4. Compares the new state with the previous tick (`~/Library/Caches/swiftbar-aws-sso-status/state`) and fires a notification on `ok → expired`.
 
 ### Login flow
 
-Clicking **Sign in** runs `.aws-sso-status/login.sh`, which:
+Clicking **Sign in** re-invokes the entry script with `login` as a parameter, which:
 
 1. Re-checks `aws sts get-caller-identity` — if already valid, it just notifies and exits.
 2. Otherwise runs `aws sso login --sso-session <session>` (preferred) or `aws sso login --profile <profile>` and opens the system browser.
-3. Logs everything to `~/.aws/swiftbar-sso-login.log` and surfaces a macOS notification on success/failure.
+3. Logs everything to `~/Library/Logs/swiftbar-aws-sso-status/plugin.log` and surfaces a macOS notification on success/failure.
 
 ### Profile switching
 
@@ -73,9 +73,9 @@ The first time the file is rewritten, `~/.aws/config.swiftbar.bak` is created as
 
 | Path | Purpose |
 | --- | --- |
-| `~/.aws/swiftbar-sso-state` | `ok` / `expired` from the last tick (used to detect transitions) |
-| `~/.aws/swiftbar-sso-just-switched` | Marker dropped during a profile switch; consumed by the next tick |
-| `~/.aws/swiftbar-sso-login.log` | Append-only log from `login.sh` / `logout.sh` |
+| `~/Library/Caches/swiftbar-aws-sso-status/state` | `ok` / `expired` from the last tick (used to detect transitions) |
+| `~/Library/Caches/swiftbar-aws-sso-status/last-check` | Timestamp of the last STS check (throttles background refresh) |
+| `~/Library/Logs/swiftbar-aws-sso-status/plugin.log` | Append-only log of login / logout / notification events (rotated at 256 KiB, one `.old` backup) |
 | `~/.aws/config.swiftbar.bak` | One-shot backup of `~/.aws/config` before the first profile-switch rewrite |
 
 ## Configuration
@@ -89,7 +89,6 @@ The first time the file is rewritten, `~/.aws/config.swiftbar.bak` is created as
 
 - **Menu bar shows red cloud right after `aws sso login`** — give it 60 seconds (next tick) or hit **Refresh all** in SwiftBar.
 - **`aws sso login` browser tab doesn't auto-close** — that's standard AWS CLI behavior. Closing the tab manually is fine; the plugin will detect the new session on the next tick.
-- **Multiple plugins appearing for `__pycache__`** — make sure the plugins folder has `.aws-sso-status/`, `__pycache__/`, `*.pyc` listed in its `.swiftbarignore` (the installer adds them automatically).
 - **No SSO profile detected** — verify `~/.aws/config` has either `sso_start_url` or a `sso_session = <name>` referencing a `[sso-session <name>]` block.
 
 ## License
