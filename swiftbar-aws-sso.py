@@ -16,9 +16,10 @@
 """
 AWS SSO Session Status for SwiftBar.
 
-Rendering is instant: the menu always shows the last cached state (STATE_FILE).
-The STS check runs in a background subprocess and refreshes SwiftBar only when
-the auth state changes, so the menu bar never blocks on a network call.
+Rendering is instant: the menu always shows the last cached state (per-session
+state files in CACHE_DIR). The STS check runs in a background subprocess and
+refreshes SwiftBar only when the auth state changes, so the menu bar never
+blocks on a network call.
 """
 
 import configparser
@@ -35,7 +36,6 @@ FALLBACK_DEFAULT_PROFILE = "default"
 _PLUGIN_NAME    = "swiftbar-aws-sso"
 CACHE_DIR       = Path(os.environ.get("SWIFTBAR_PLUGIN_CACHE_PATH",
                        Path.home() / "Library" / "Caches" / _PLUGIN_NAME))
-STATE_FILE      = CACHE_DIR / "state"
 LAST_CHECK_FILE = CACHE_DIR / "last-check"
 
 LOG_FILE        = Path.home() / "Library" / "Logs" / _PLUGIN_NAME / "plugin.log"
@@ -93,6 +93,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "status_inactive":          "Status: not authenticated",
         "switch_profile":           "Switch default profile",
         "open_console":             "Open AWS Console",
+        "no_sso_configured":        "No SSO profiles configured in ~/.aws/config",
     },
     "fr": {
         "already_authenticated":    "Déjà connecté",
@@ -114,6 +115,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "status_inactive":          "Statut : non authentifié",
         "switch_profile":           "Changer de profil par défaut",
         "open_console":             "Ouvrir la console AWS",
+        "no_sso_configured":        "Aucun profil SSO configuré dans ~/.aws/config",
     },
 }
 
@@ -202,6 +204,54 @@ def get_start_url(profile: str):
     if not config:
         return None
     return _resolve_start_url(config, _profile_section(profile))
+
+
+def get_all_sso_sessions() -> list[dict]:
+    """
+    Returns all SSO sessions, each as:
+      {'name': str, 'start_url': str, 'profiles': [str], 'is_named': bool}
+
+    Named sessions ([sso-session X]) group multiple profiles under a single
+    browser login. Inline profiles (with sso_start_url directly on the profile)
+    each form their own independent entry.
+    """
+    config = _read_aws_config()
+    if not config:
+        return []
+    sessions: dict[str, dict] = {}
+    for section in config.sections():
+        if section == "DEFAULT":
+            profile_name = "default"
+        elif section.startswith("profile "):
+            profile_name = section[len("profile "):]
+        else:
+            continue
+        sec = config[section]
+        sso_session_name = sec.get("sso_session", "").strip()
+        if sso_session_name:
+            sess_key = f"sso-session {sso_session_name}"
+            start_url = config[sess_key].get("sso_start_url", "").strip() if sess_key in config else ""
+            if not start_url:
+                continue
+            if sso_session_name not in sessions:
+                sessions[sso_session_name] = {
+                    "name": sso_session_name,
+                    "start_url": start_url,
+                    "profiles": [],
+                    "is_named": True,
+                }
+            sessions[sso_session_name]["profiles"].append(profile_name)
+        else:
+            start_url = sec.get("sso_start_url", "").strip()
+            if not start_url:
+                continue
+            sessions[profile_name] = {
+                "name": profile_name,
+                "start_url": start_url,
+                "profiles": [profile_name],
+                "is_named": False,
+            }
+    return list(sessions.values())
 
 
 # ---------------------------------------------------------------------------
@@ -346,22 +396,25 @@ def sts_works(profile: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# State
+# Per-session state
 # ---------------------------------------------------------------------------
 
-def read_state() -> str:
-    if STATE_FILE.exists():
-        try:
-            return STATE_FILE.read_text().strip()
-        except OSError:
-            return ""
-    return ""
+def _session_state_file(session_name: str) -> Path:
+    safe = session_name.replace("/", "_").replace(" ", "_")
+    return CACHE_DIR / f"state-{safe}"
 
 
-def write_state(state: str):
+def read_session_state(session_name: str) -> str:
+    try:
+        return _session_state_file(session_name).read_text().strip()
+    except OSError:
+        return ""
+
+
+def write_session_state(session_name: str, state: str):
     try:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        STATE_FILE.write_text(state)
+        _session_state_file(session_name).write_text(state)
     except OSError:
         pass
 
@@ -491,9 +544,13 @@ def do_login(sso_session: str, profile: str):
     if not profile:
         profile = get_selected_profile()
 
+    session_name = sso_session or profile
+
     log("login", f"Checking STS for profile: {profile}")
     if sts_works(profile):
-        _record_auth_state(True)
+        write_session_state(session_name, "ok")
+        _mark_check_done()
+        _swiftbar_refresh()
         notify("AWS SSO", t("already_authenticated"), "key")
         return
 
@@ -514,7 +571,9 @@ def do_login(sso_session: str, profile: str):
         return
 
     if r.returncode == 0:
-        _record_auth_state(True)
+        write_session_state(session_name, "ok")
+        _mark_check_done()
+        _swiftbar_refresh()
         notify("AWS SSO", t("signed_in"), "key")
     else:
         log("login", f"FAILED (exit {r.returncode}): {(r.stdout or '') + (r.stderr or '')}".strip())
@@ -533,7 +592,11 @@ def do_logout(profile: str):
         subprocess.run([aws, "sso", "logout"], capture_output=True, timeout=10, check=False)
     except (subprocess.TimeoutExpired, OSError):
         pass
-    _record_auth_state(False)
+    # aws sso logout clears all cached SSO tokens, so mark every session expired.
+    for s in get_all_sso_sessions():
+        write_session_state(s["name"], "expired")
+    _mark_check_done()
+    _swiftbar_refresh()
     notify("AWS SSO", t("logged_out"), "minus")
 
 
@@ -551,36 +614,33 @@ def _swiftbar_refresh():
         pass
 
 
-def _record_auth_state(authenticated: bool):
-    """Pin the cached state to a fresh truth and refresh SwiftBar.
-    Notification-triggered actions don't get SwiftBar's automatic refresh,
-    so we always nudge the menu bar ourselves.
-    """
-    _mark_check_done()
-    write_state("ok" if authenticated else "expired")
-    _swiftbar_refresh()
-
-
 def run_background_update():
-    """Called as a subprocess: check STS, update state, notify + refresh if changed."""
-    profile = get_selected_profile()
+    """Check all SSO sessions, update per-session state, notify if any expires."""
+    sessions = get_all_sso_sessions()
     _mark_check_done()
-    is_authenticated = sts_works(profile)
-    old_state = read_state()
-    new_state = "ok" if is_authenticated else "expired"
-    write_state(new_state)
-    if old_state != new_state:
-        log("state", f"{old_state or 'unknown'} → {new_state} (profile {profile})")
+    changed = False
+    for s in sessions:
+        profile = s["profiles"][0] if s["profiles"] else None
+        if not profile:
+            continue
+        is_authenticated = sts_works(profile)
+        old_state = read_session_state(s["name"])
+        new_state = "ok" if is_authenticated else "expired"
+        write_session_state(s["name"], new_state)
+        if old_state != new_state:
+            log("state", f"{s['name']}: {old_state or 'unknown'} → {new_state}")
+            changed = True
+        if old_state == "ok" and new_state == "expired":
+            sso_arg = s["name"] if s["is_named"] else ""
+            notify_with_action(
+                "AWS SSO",
+                t("session_expired", profile=s["name"]),
+                t("renew"),
+                [str(ENTRY), "login", sso_arg, profile],
+                "clock",
+            )
+    if changed:
         _swiftbar_refresh()
-    if old_state == "ok" and new_state == "expired":
-        sso_session = get_sso_session_name(profile) or ""
-        notify_with_action(
-            "AWS SSO",
-            t("session_expired", profile=profile),
-            t("renew"),
-            [str(ENTRY), "login", sso_session, profile],
-            "clock",
-        )
 
 
 def _spawn_background_update():
@@ -601,48 +661,92 @@ def _spawn_background_update():
 # ---------------------------------------------------------------------------
 
 def render_menu():
-    profile = get_selected_profile()
-    sso_session = get_sso_session_name(profile) or ""
+    sessions = get_all_sso_sessions()
 
-    cached_state = read_state()
-    if cached_state == "":
-        # First launch: no cached state yet, do a synchronous check once.
-        _mark_check_done()
-        is_authenticated = sts_works(profile)
-        write_state("ok" if is_authenticated else "expired")
-    else:
-        is_authenticated = cached_state == "ok"
-        if _seconds_since_last_check() > CHECK_INTERVAL_S:
-            _spawn_background_update()
-
-    if is_authenticated:
-        print(f" | sfimage={ICON_OK}")
-    else:
+    if not sessions:
         print(f" | sfimage={ICON_KO}")
-
-    print("---")
-    print(f"AWS SSO")
-    print(t("menu_profile", profile=profile))
-    print(t("status_active") if is_authenticated else t("status_inactive"))
-
-    profiles = get_all_sso_profiles()
-    if len(profiles) > 1:
         print("---")
-        print(t("switch_profile"))
-        for p in profiles:
-            mark = "✓ " if p == profile else ""
-            print(f"--{mark}{p} | bash={ENTRY} param0=select-profile param1={p} terminal=false refresh=true")
+        print("AWS SSO")
+        print(t("no_sso_configured"))
+        return
 
+    # Read per-session cached states; identify sessions with no cached state yet.
+    session_states: dict[str, str] = {}
+    uncached: list[dict] = []
+    for s in sessions:
+        state = read_session_state(s["name"])
+        session_states[s["name"]] = state
+        if not state:
+            uncached.append(s)
+
+    if uncached:
+        # First launch or new session: synchronous STS check for uncached sessions only.
+        _mark_check_done()
+        for s in uncached:
+            profile = s["profiles"][0] if s["profiles"] else None
+            if profile:
+                state = "ok" if sts_works(profile) else "expired"
+                write_session_state(s["name"], state)
+                session_states[s["name"]] = state
+    elif _seconds_since_last_check() > CHECK_INTERVAL_S:
+        _spawn_background_update()
+
+    all_ok = all(v == "ok" for v in session_states.values())
+
+    print(f" | sfimage={ICON_OK if all_ok else ICON_KO}")
     print("---")
+    print("AWS SSO")
 
-    start_url = get_start_url(profile)
-    if start_url:
-        print(f"{t('open_console')} | href={start_url}")
+    if len(sessions) == 1:
+        s = sessions[0]
+        is_auth = session_states.get(s["name"]) == "ok"
+        selected = get_selected_profile()
+        sso_arg = s["name"] if s["is_named"] else ""
 
-    if is_authenticated:
-        print(f"{t('sign_out')} | bash={ENTRY} param0=logout param1={profile} terminal=false refresh=true")
+        print(t("menu_profile", profile=selected))
+        print(t("status_active") if is_auth else t("status_inactive"))
+
+        all_profiles = get_all_sso_profiles()
+        if len(all_profiles) > 1:
+            print("---")
+            print(t("switch_profile"))
+            for p in all_profiles:
+                mark = "✓ " if p == selected else ""
+                print(f"--{mark}{p} | bash={ENTRY} param0=select-profile param1={p} terminal=false refresh=true")
+
+        print("---")
+        if s["start_url"]:
+            print(f"{t('open_console')} | href={s['start_url']}")
+        if is_auth:
+            print(f"{t('sign_out')} | bash={ENTRY} param0=logout param1={selected} terminal=false refresh=true")
+        else:
+            print(f"{t('sign_in')} | bash={ENTRY} param0=login param1={sso_arg} param2={selected} terminal=false refresh=true")
+
     else:
-        print(f"{t('sign_in')} | bash={ENTRY} param0=login param1={sso_session} param2={profile} terminal=false refresh=true")
+        for s in sessions:
+            is_auth = session_states.get(s["name"]) == "ok"
+            profile = s["profiles"][0] if s["profiles"] else ""
+            print("---")
+            print(s["name"])
+            print(f"--{t('status_active') if is_auth else t('status_inactive')}")
+            if s["start_url"]:
+                print(f"--{t('open_console')} | href={s['start_url']}")
+            if is_auth:
+                print(f"--{t('sign_out')} | bash={ENTRY} param0=logout param1={profile} terminal=false refresh=true")
+            else:
+                sso_arg = s["name"] if s["is_named"] else ""
+                print(f"--{t('sign_in')} | bash={ENTRY} param0=login param1={sso_arg} param2={profile} terminal=false refresh=true")
+
+        all_profiles = get_all_sso_profiles()
+        if len(all_profiles) > 1:
+            selected = get_selected_profile()
+            print("---")
+            print(t("switch_profile"))
+            for s in sessions:
+                print(f"--{s['name']} | color=gray")
+                for p in s["profiles"]:
+                    mark = "✓ " if p == selected else ""
+                    print(f"--{mark}{p} | bash={ENTRY} param0=select-profile param1={p} terminal=false refresh=true")
 
 
 def main():
@@ -674,11 +778,14 @@ def main():
         new_profile = sys.argv[2]
         apply_default_profile(new_profile)
         is_authenticated = sts_works(new_profile)
-        _record_auth_state(is_authenticated)
+        sso_session = get_sso_session_name(new_profile) or ""
+        session_name = sso_session or new_profile
+        write_session_state(session_name, "ok" if is_authenticated else "expired")
+        _mark_check_done()
+        _swiftbar_refresh()
         if is_authenticated:
             notify("AWS SSO", t("switched_ok", profile=new_profile), "key")
         else:
-            sso_session = get_sso_session_name(new_profile) or ""
             notify_with_action(
                 "AWS SSO",
                 t("switched_unauthenticated", profile=new_profile),
