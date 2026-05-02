@@ -697,30 +697,56 @@ def render_menu():
     print("---")
     print("AWS SSO")
 
-    for s in sessions:
+    if len(sessions) == 1:
+        s = sessions[0]
         is_auth = session_states.get(s["name"]) == "ok"
-        profile = s["profiles"][0] if s["profiles"] else ""
-        print("---")
-        print(s["name"])
-        print(f"--{t('status_active') if is_auth else t('status_inactive')}")
-        if s["start_url"]:
-            print(f"--{t('open_console')} | href={s['start_url']}")
-        if is_auth:
-            print(f"--{t('sign_out')} | bash={ENTRY} param0=logout param1={profile} terminal=false refresh=true")
-        else:
-            sso_arg = s["name"] if s["is_named"] else ""
-            print(f"--{t('sign_in')} | bash={ENTRY} param0=login param1={sso_arg} param2={profile} terminal=false refresh=true")
-
-    all_profiles = get_all_sso_profiles()
-    if len(all_profiles) > 1:
         selected = get_selected_profile()
-        print("---")
-        print(t("switch_profile"))
-        for s in sessions:
-            print(f"--{s['name']} | color=gray")
-            for p in s["profiles"]:
+        sso_arg = s["name"] if s["is_named"] else ""
+
+        print(t("menu_profile", profile=selected))
+        print(t("status_active") if is_auth else t("status_inactive"))
+
+        all_profiles = get_all_sso_profiles()
+        if len(all_profiles) > 1:
+            print("---")
+            print(t("switch_profile"))
+            for p in all_profiles:
                 mark = "✓ " if p == selected else ""
                 print(f"--{mark}{p} | bash={ENTRY} param0=select-profile param1={p} terminal=false refresh=true")
+
+        print("---")
+        if s["start_url"]:
+            print(f"{t('open_console')} | href={s['start_url']}")
+        if is_auth:
+            print(f"{t('sign_out')} | bash={ENTRY} param0=logout param1={selected} terminal=false refresh=true")
+        else:
+            print(f"{t('sign_in')} | bash={ENTRY} param0=login param1={sso_arg} param2={selected} terminal=false refresh=true")
+
+    else:
+        for s in sessions:
+            is_auth = session_states.get(s["name"]) == "ok"
+            profile = s["profiles"][0] if s["profiles"] else ""
+            print("---")
+            print(s["name"])
+            print(f"--{t('status_active') if is_auth else t('status_inactive')}")
+            if s["start_url"]:
+                print(f"--{t('open_console')} | href={s['start_url']}")
+            if is_auth:
+                print(f"--{t('sign_out')} | bash={ENTRY} param0=logout param1={profile} terminal=false refresh=true")
+            else:
+                sso_arg = s["name"] if s["is_named"] else ""
+                print(f"--{t('sign_in')} | bash={ENTRY} param0=login param1={sso_arg} param2={profile} terminal=false refresh=true")
+
+        all_profiles = get_all_sso_profiles()
+        if len(all_profiles) > 1:
+            selected = get_selected_profile()
+            print("---")
+            print(t("switch_profile"))
+            for s in sessions:
+                print(f"--{s['name']} | color=gray")
+                for p in s["profiles"]:
+                    mark = "✓ " if p == selected else ""
+                    print(f"--{mark}{p} | bash={ENTRY} param0=select-profile param1={p} terminal=false refresh=true")
 
 
 def main():
