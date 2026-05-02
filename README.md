@@ -129,3 +129,7 @@ The first time the file is rewritten, `~/.aws/config.swiftbar.bak` is created as
 ## License
 
 [MIT](LICENSE)
+
+---
+
+> This project is not affiliated with, endorsed by, or sponsored by Amazon Web Services, Inc.

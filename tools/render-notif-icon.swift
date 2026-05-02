@@ -7,9 +7,9 @@
 //   badge-color ∈ {blue, gray, orange, green, red}  (orange = #f90)
 //
 // To regenerate the bundled notification icons:
-//   swift tools/render-notif-icon.swift person.badge.key   orange .swiftbar-aws-sso/notif-key.png
-//   swift tools/render-notif-icon.swift person.badge.minus orange .swiftbar-aws-sso/notif-minus.png
-//   swift tools/render-notif-icon.swift person.badge.clock orange .swiftbar-aws-sso/notif-clock.png
+//   swift tools/render-notif-icon.swift person.badge.key.fill   orange .swiftbar-aws-sso/notif-key.png
+//   swift tools/render-notif-icon.swift person.badge.minus.fill orange .swiftbar-aws-sso/notif-minus.png
+//   swift tools/render-notif-icon.swift person.badge.clock.fill orange .swiftbar-aws-sso/notif-clock.png
 
 import AppKit
 import Foundation
@@ -33,7 +33,7 @@ let primaryColor: NSColor = NSColor.black
 
 let canvasSize = NSSize(width: 512, height: 512)
 let cornerRadius: CGFloat = 112
-let symbolPointSize: CGFloat = 300
+let symbolPointSize: CGFloat = 360
 
 guard let base = NSImage(systemSymbolName: name, accessibilityDescription: nil) else { exit(2) }
 
