@@ -1,16 +1,18 @@
 # SwiftBar AWS SSO
 
-AWS SSO session status in your macOS menu bar — sign in, switch profiles, and open the Console without touching a terminal.
+AWS SSO session status in your macOS menu bar — sign in, switch profiles, and open the Console without touching a terminal. Supports multiple SSO sessions simultaneously.
 
 ![SwiftBar AWS SSO menu](assets/screenshot-menu.jpg)
 
 ## Features
 
-**Session status at a glance** — the cloud icon fills when your session is active and shows an × when it expires.
+**Session status at a glance** — the menu bar shows a person icon with a key when all your SSO sessions are active, and a person icon with a minus when any one expires.
 
 **Sign in / Sign out** — clicking **Sign in** opens the browser SSO flow only if your session is actually expired; **Sign out** ends it immediately.
 
 **Open AWS Console** — jumps to the SSO start URL for the active profile directly in your browser.
+
+**Multi-session support** — if your `~/.aws/config` defines several `[sso-session]` blocks, each one is tracked independently. The menu shows a dedicated section per session with its own status, sign-in/out action, and Console link. The icon is green only when every session is active.
 
 **Profile switching** — the **Switch default profile** submenu lets you pick any SSO profile from `~/.aws/config`. The `[default]` block is rewritten automatically, so every subsequent `aws` command picks it up without `--profile`.
 
@@ -73,9 +75,9 @@ After installation, open SwiftBar (`open -a SwiftBar`) and trigger **Refresh all
 
 SwiftBar runs `swiftbar-aws-sso.py` every minute (schedule declared via the `<swiftbar.schedule>` metadata tag). Each tick:
 
-1. **Instant render**: the menu is drawn immediately from the last cached state (`$SWIFTBAR_PLUGIN_CACHE_PATH/state`), so the menu bar never waits on a network call.
-2. **Background check**: if the previous STS check is older than ~55s, a subprocess is spawned to run `aws sts get-caller-identity --profile <profile>` (8s timeout) and update the cache.
-3. **State transition**: when the cached state changes (e.g. `ok → expired`), the subprocess fires a macOS notification and pings SwiftBar to refresh the menu bar (`swiftbar://refreshPlugin`).
+1. **Instant render**: the menu is drawn immediately from the last cached state (one file per SSO session in `$SWIFTBAR_PLUGIN_CACHE_PATH`), so the menu bar never waits on a network call.
+2. **Background check**: if the previous STS check is older than ~55s, a subprocess is spawned to run `aws sts get-caller-identity --profile <profile>` (8s timeout) for each session and update the cache.
+3. **State transition**: when any session's cached state changes (e.g. `ok → expired`), the subprocess fires a macOS notification and pings SwiftBar to refresh the menu bar (`swiftbar://refreshPlugin`).
 
 The active profile is resolved by matching the contents of `[default]` in `~/.aws/config` against each `[profile <name>]` block. If `[default]` is empty, the env var `SWIFTBAR_AWS_PROFILE` is used; if neither is set, the first SSO profile in `~/.aws/config` is picked.
 
@@ -105,7 +107,7 @@ The first time the file is rewritten, `~/.aws/config.swiftbar.bak` is created as
 
 | Path | Purpose |
 | --- | --- |
-| `$SWIFTBAR_PLUGIN_CACHE_PATH/state` | `ok` / `expired` from the last tick (used to detect transitions) |
+| `$SWIFTBAR_PLUGIN_CACHE_PATH/state-<session>` | `ok` / `expired` per SSO session (one file per session, used to detect transitions) |
 | `$SWIFTBAR_PLUGIN_CACHE_PATH/last-check` | Timestamp of the last STS check (throttles background refresh) |
 | `~/Library/Logs/swiftbar-aws-sso/plugin.log` | Append-only log of login / logout / state transitions / notification events |
 | `~/.aws/config.swiftbar.bak` | One-shot backup of `~/.aws/config` before the first profile-switch rewrite |
