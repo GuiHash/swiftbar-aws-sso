@@ -53,6 +53,78 @@ NOTIF_ICONS_DIR = ENTRY.parent / ".swiftbar-aws-sso"
 
 
 # ---------------------------------------------------------------------------
+# i18n
+# ---------------------------------------------------------------------------
+
+def _detect_locale() -> str:
+    for var in ("LANG", "LC_ALL", "LC_MESSAGES"):
+        val = os.environ.get(var, "")[:2]
+        if val and val.isalpha():
+            return val
+    try:
+        r = subprocess.run(
+            ["defaults", "read", "-g", "AppleLocale"],
+            capture_output=True, text=True, timeout=2, check=False,
+        )
+        return (r.stdout.strip() or "")[:2]
+    except (subprocess.TimeoutExpired, OSError):
+        return ""
+
+_LOCALE = _detect_locale()
+
+_STRINGS: dict[str, dict[str, str]] = {
+    "en": {
+        "already_authenticated":    "Already authenticated",
+        "opening_browser":          "Opening browser to sign in for {profile}…",
+        "signed_in":                "Signed in",
+        "aws_not_found_alert":      "aws CLI not found. Install AWS CLI v2 or set AWS=/path/to/aws",
+        "login_run_failed":         "aws sso login could not run: {e}. See: {log}",
+        "login_exit_failed":        "aws sso login failed (exit {code}). See: {log}",
+        "aws_not_found":            "aws CLI not found",
+        "logged_out":               "Logged out",
+        "session_expired":          "Session expired for {profile}",
+        "renew":                    "Renew",
+        "switched_ok":              "Switched to {profile} — credentials OK",
+        "switched_unauthenticated": "Switched to {profile} — not authenticated",
+        "sign_in":                  "Sign in",
+        "sign_out":                 "Sign out",
+        "menu_profile":             "Profile: {profile}",
+        "status_active":            "Status: active",
+        "status_inactive":          "Status: not authenticated",
+        "switch_profile":           "Switch default profile",
+        "open_console":             "Open AWS Console",
+    },
+    "fr": {
+        "already_authenticated":    "Déjà connecté",
+        "opening_browser":          "Ouverture du navigateur pour {profile}…",
+        "signed_in":                "Connecté",
+        "aws_not_found_alert":      "aws CLI introuvable. Installez AWS CLI v2 ou définissez AWS=/chemin/vers/aws",
+        "login_run_failed":         "aws sso login a échoué : {e}. Voir : {log}",
+        "login_exit_failed":        "aws sso login a échoué (code {code}). Voir : {log}",
+        "aws_not_found":            "aws CLI introuvable",
+        "logged_out":               "Déconnecté",
+        "session_expired":          "Session expirée pour {profile}",
+        "renew":                    "Renouveler",
+        "switched_ok":              "Basculé vers {profile} — identifiants OK",
+        "switched_unauthenticated": "Basculé vers {profile} — non authentifié",
+        "sign_in":                  "Se connecter",
+        "sign_out":                 "Se déconnecter",
+        "menu_profile":             "Profil : {profile}",
+        "status_active":            "Statut : actif",
+        "status_inactive":          "Statut : non authentifié",
+        "switch_profile":           "Changer de profil par défaut",
+        "open_console":             "Ouvrir la console AWS",
+    },
+}
+
+
+def t(key: str, **kwargs) -> str:
+    strings = _STRINGS.get(_LOCALE, _STRINGS["en"])
+    s = strings.get(key, _STRINGS["en"].get(key, key))
+    return s.format(**kwargs) if kwargs else s
+
+
+# ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
 
@@ -413,7 +485,7 @@ def notify_with_action(title: str, message: str, action_label: str, on_click_cmd
 def do_login(sso_session: str, profile: str):
     aws = resolve_aws_cli()
     if not aws:
-        alert("AWS SSO", "aws CLI not found. Install AWS CLI v2 or set AWS=/path/to/aws")
+        alert("AWS SSO", t("aws_not_found_alert"))
         return
 
     if not profile:
@@ -422,10 +494,10 @@ def do_login(sso_session: str, profile: str):
     log("login", f"Checking STS for profile: {profile}")
     if sts_works(profile):
         _record_auth_state(True)
-        notify("AWS SSO", "Already authenticated", "key")
+        notify("AWS SSO", t("already_authenticated"), "key")
         return
 
-    notify("AWS SSO", f"Opening browser to sign in for {profile}…", "clock")
+    notify("AWS SSO", t("opening_browser", profile=profile), "clock")
 
     if sso_session:
         log("login", f"Running: aws sso login --sso-session {sso_session}")
@@ -438,21 +510,21 @@ def do_login(sso_session: str, profile: str):
         r = subprocess.run(cmd, capture_output=True, text=True, check=False)
     except OSError as e:
         log("login", f"FAILED to invoke aws CLI: {e}")
-        alert("AWS SSO", f"aws sso login could not run: {e}. See: {LOG_FILE}")
+        alert("AWS SSO", t("login_run_failed", e=e, log=LOG_FILE))
         return
 
     if r.returncode == 0:
         _record_auth_state(True)
-        notify("AWS SSO", "Signed in", "key")
+        notify("AWS SSO", t("signed_in"), "key")
     else:
         log("login", f"FAILED (exit {r.returncode}): {(r.stdout or '') + (r.stderr or '')}".strip())
-        alert("AWS SSO", f"aws sso login failed (exit {r.returncode}). See: {LOG_FILE}")
+        alert("AWS SSO", t("login_exit_failed", code=r.returncode, log=LOG_FILE))
 
 
 def do_logout(profile: str):
     aws = resolve_aws_cli()
     if not aws:
-        notify("AWS SSO", "aws CLI not found", "minus")
+        notify("AWS SSO", t("aws_not_found"), "minus")
         return
     if not profile:
         profile = get_selected_profile()
@@ -462,7 +534,7 @@ def do_logout(profile: str):
     except (subprocess.TimeoutExpired, OSError):
         pass
     _record_auth_state(False)
-    notify("AWS SSO", "Logged out", "minus")
+    notify("AWS SSO", t("logged_out"), "minus")
 
 
 # ---------------------------------------------------------------------------
@@ -504,8 +576,8 @@ def run_background_update():
         sso_session = get_sso_session_name(profile) or ""
         notify_with_action(
             "AWS SSO",
-            f"Session expired for {profile}",
-            "Renew",
+            t("session_expired", profile=profile),
+            t("renew"),
             [str(ENTRY), "login", sso_session, profile],
             "clock",
         )
@@ -550,13 +622,13 @@ def render_menu():
 
     print("---")
     print(f"AWS SSO")
-    print(f"Profile: {profile}")
-    print(f"Status: {'active' if is_authenticated else 'not authenticated'}")
+    print(t("menu_profile", profile=profile))
+    print(t("status_active") if is_authenticated else t("status_inactive"))
 
     profiles = get_all_sso_profiles()
     if len(profiles) > 1:
         print("---")
-        print("Switch default profile")
+        print(t("switch_profile"))
         for p in profiles:
             mark = "✓ " if p == profile else ""
             print(f"--{mark}{p} | bash={ENTRY} param0=select-profile param1={p} terminal=false refresh=true")
@@ -565,12 +637,12 @@ def render_menu():
 
     start_url = get_start_url(profile)
     if start_url:
-        print(f"Open AWS Console | href={start_url}")
+        print(f"{t('open_console')} | href={start_url}")
 
     if is_authenticated:
-        print(f"Sign out | bash={ENTRY} param0=logout param1={profile} terminal=false refresh=true")
+        print(f"{t('sign_out')} | bash={ENTRY} param0=logout param1={profile} terminal=false refresh=true")
     else:
-        print(f"Sign in | bash={ENTRY} param0=login param1={sso_session} param2={profile} terminal=false refresh=true")
+        print(f"{t('sign_in')} | bash={ENTRY} param0=login param1={sso_session} param2={profile} terminal=false refresh=true")
 
 
 def main():
@@ -604,13 +676,13 @@ def main():
         is_authenticated = sts_works(new_profile)
         _record_auth_state(is_authenticated)
         if is_authenticated:
-            notify("AWS SSO", f"Switched to {new_profile} — credentials OK", "key")
+            notify("AWS SSO", t("switched_ok", profile=new_profile), "key")
         else:
             sso_session = get_sso_session_name(new_profile) or ""
             notify_with_action(
                 "AWS SSO",
-                f"Switched to {new_profile} — not authenticated",
-                "Sign in",
+                t("switched_unauthenticated", profile=new_profile),
+                t("sign_in"),
                 [str(ENTRY), "login", sso_session, new_profile],
                 "minus",
             )
